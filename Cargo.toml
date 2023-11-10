@@ -1,6 +1,17 @@
 [package]
 name = "bevy_bundlication"
-version = "0.1.0"
+version = "0.0.1"
+description = "Network replication for bevy based on a bundle pattern"
+readme = "README.md"
+repository = "https://github.com/NiseVoid/bevy_bundlication"
+keywords = [
+  "bevy",
+  "networking",
+  "server-authoritative",
+  "replication",
+]
+categories = ["game-development", "network-programming"]
+
 edition = "2021"
 
 [dependencies]
