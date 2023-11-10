@@ -16,6 +16,9 @@ exclude = ["benches/*", "tests/*"]
 
 edition = "2021"
 
+[workspace]
+members = [".", "macros", "benches"]
+
 [dependencies]
 bevy_bundlication_macros = {version = "0.0.1", path = "macros"}
 
@@ -32,6 +35,13 @@ renet = ["dep:renet"]
 
 [dev-dependencies]
 bevy_bundlication = { path = ".", default-features = false, features = ["test"] }
+
+[profile.release]
+codegen-units = 1
+opt-level = 3
+lto = "fat"
+strip = true
+panic = "abort"
 
 [patch.crates-io]
 renet = { git = "https://github.com/lucaspoffo/renet" }
