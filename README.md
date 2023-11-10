@@ -22,7 +22,7 @@ Network replication for bevy based on a bundle pattern.
 - Client-side packet buffering (to reduce jitter and support accurate interpolation)
 - Per-entity visibility control
 
-License
+## License
 
 All code in this repository is dual-licensed under either:
 
