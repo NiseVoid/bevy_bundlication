@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,11 @@ pub struct Position(u8, u8, u8);
 
 impl NetworkedWrapper<Transform> for Position {
     fn from_component(_: Tick, _: &IdentifierMap, from: &Transform) -> IdentifierResult<Self> {
-        Ok(Self(from.translation.x as u8, from.translation.y as u8, from.translation.z as u8))
+        Ok(Self(
+            from.translation.x as u8,
+            from.translation.y as u8,
+            from.translation.z as u8,
+        ))
     }
     fn to_component(self, _: Tick, _: &IdentifierMap) -> IdentifierResult<Transform> {
         Ok(Transform {

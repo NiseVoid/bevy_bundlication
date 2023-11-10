@@ -11,98 +11,92 @@
 //! You can register events with [AppNetworkingExt::register_event]. Events will be sent if the
 //! direction matches, on the receiving side events are wrapped in [NetworkEvent]
 
-// TODO: Crate a prelude, move code into a few separate files
-
 #![warn(missing_docs)]
 
+mod tick;
+use tick::Tick;
+
+mod identifier;
+use identifier::{EntityStatus, Identifier, IdentifierMap, IdentifierResult, Owner};
+
+mod component_info;
+pub use component_info::Remote;
+
+mod bundle_info;
+pub use bundle_info::{LastSent, LastUpdate};
+
 mod iter;
+
+mod despawn;
+
+mod client_authority;
+pub use client_authority::{Authority, Identity};
 
 mod buffer;
 pub use buffer::*;
 
-pub use bevy_bundlication_macros::NetworkedBundle;
+pub mod prelude {
+    //! The prelude of the crate, contains everything necessary to get started with this crate
+
+    pub mod exts {
+        //! A sub-prelude containing all extension traits to use this crate
+        pub use crate::{
+            identifier::{
+                CommandsSpawnIdentifierExt, EntityCommandsInsertIdentifierExt,
+                SpawnIdentifierCommand, WorldSpawnIdentifierExt,
+            },
+            AppNetworkingExt,
+        };
+    }
+    pub use exts::*;
+
+    pub use crate::{
+        buffer::SendRule,
+        client_authority::Authority,
+        component_info::Remote,
+        identifier::{
+            EntityStatus, Identifier, IdentifierError, IdentifierMap, IdentifierResult, Owner,
+        },
+        tick::{Tick, TickSet},
+        ClientNetworkingPlugin, ClientToServer, NetworkEvent, NetworkedBundle, NetworkedComponent,
+        NetworkedEvent, NetworkedWrapper, SendEvent, ServerNetworkingPlugin, ServerToAll,
+        ServerToClient, ServerToObserver, ServerToOwner,
+    };
+    pub use bevy_bundlication_macros::NetworkedBundle;
+
+    #[cfg(any(test, feature = "test"))]
+    pub use crate::{
+        client_authority::Identity,
+        test_impl::{ClientMessages, ServerMessages},
+    };
+}
+
+pub mod macro_export {
+    //! A module with exports used by the macro
+
+    pub use crate::{
+        buffer::{BufferKey, Buffers},
+        bundle_info::{LastSent, LastUpdate},
+        client_authority::Identity,
+        prelude::*,
+        ApplyChangeFn, SendChangeFn, SendMethod,
+    };
+    pub use bincode;
+}
 
 use std::any::{Any, TypeId};
 use std::marker::PhantomData;
 
 use bevy::{
     ecs::schedule::ScheduleLabel,
-    ecs::system::{Command, EntityCommands},
-    ecs::world::EntityWorldMut,
     prelude::*,
     reflect::TypePath,
     utils::{intern::Interned, HashMap},
 };
-pub use bincode as bincode_export;
-#[cfg(not(any(test, feature = "test")))]
+
+#[cfg(feature = "renet")]
 use renet::{RenetClient, RenetServer};
 use serde::{Deserialize, Serialize};
-
-/// A container for the remote values from synchronized bundles. If this component is around, then
-/// updates for T will be stored here instead of being applied directly
-#[derive(Component, Deref)]
-pub struct Remote<T: Component> {
-    tick: Tick,
-    #[deref]
-    value: T,
-}
-
-impl<T: Component + Default> Default for Remote<T> {
-    fn default() -> Self {
-        Self::new(T::default())
-    }
-}
-
-impl<T: Component> Remote<T> {
-    /// Construct a Remote with the given value
-    #[inline(always)]
-    pub fn new(value: T) -> Self {
-        Self { tick: Tick(0), value }
-    }
-
-    /// Get the tick the latest remote value was from
-    #[inline(always)]
-    pub fn tick(&self) -> Tick {
-        self.tick
-    }
-
-    /// Update the value and tick for this remote value
-    #[inline(always)]
-    pub fn update(&mut self, value: T, tick: Tick) {
-        self.value = value;
-        self.tick = tick;
-    }
-}
-
-/// The tick a bundle was last updated at. Additionally, LastUpdate<()> is used to track the last
-/// change to the entity.
-#[derive(Component, Deref, DerefMut)]
-pub struct LastUpdate<T> {
-    #[deref]
-    tick: Tick,
-    _phantom: PhantomData<T>,
-}
-
-impl<T> PartialEq for LastUpdate<T> {
-    #[inline(always)]
-    fn eq(&self, other: &Self) -> bool {
-        self.tick == other.tick
-    }
-}
-
-impl<T> std::fmt::Debug for LastUpdate<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.tick.fmt(f)
-    }
-}
-
-impl<T> LastUpdate<T> {
-    /// Construct a LastUpdate
-    #[inline(always)]
-    pub fn new(tick: Tick) -> Self {
-        Self { tick, _phantom: PhantomData::<T> }
-    }
-}
 
 /// An event fired when a client connects. When it is fired packets for all entities and bundles
 /// that are relevant to this client are sent
@@ -117,493 +111,6 @@ impl NewConnection {
             Identity::Server => SendRule::All,
             Identity::Client(c) => SendRule::Only(c),
         }
-    }
-}
-
-/// The last tick the value was sent
-#[derive(Component, Deref, DerefMut)]
-pub struct LastSent<Bundle: NetworkedBundle> {
-    #[deref]
-    tick: Tick,
-    _phantom: PhantomData<Bundle>,
-}
-
-impl<Bundle: NetworkedBundle> PartialEq for LastSent<Bundle> {
-    #[inline(always)]
-    fn eq(&self, other: &Self) -> bool {
-        self.tick == other.tick
-    }
-}
-
-impl<Bundle: NetworkedBundle> std::fmt::Debug for LastSent<Bundle> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.tick.fmt(f)
-    }
-}
-
-impl<Bundle: NetworkedBundle> LastSent<Bundle> {
-    /// Construct a LastSent
-    #[inline(always)]
-    pub fn new(tick: Tick) -> Self {
-        Self {
-            tick,
-            _phantom: PhantomData::<Bundle>,
-        }
-    }
-}
-
-/// The current Tick of the networked simulation
-#[derive(Resource, Clone, Copy, Deref, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Tick(pub u32);
-
-use std::ops::{Add, Sub};
-
-impl Add<u32> for Tick {
-    type Output = Self;
-
-    fn add(self, rhs: u32) -> Self::Output {
-        Self(self.0 + rhs)
-    }
-}
-
-impl Sub for Tick {
-    type Output = u32;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        self.0 - rhs.0
-    }
-}
-
-impl Sub<u32> for Tick {
-    type Output = Self;
-
-    fn sub(self, rhs: u32) -> Self::Output {
-        Self(self.0 - rhs)
-    }
-}
-
-/// The system set in which the Tick is incremented, you should schedule your logic after this
-#[derive(SystemSet, Clone, PartialEq, Eq, Debug, Hash)]
-pub struct TickSet;
-
-/// A component to override the owner of an entity. When this is present the provided client_id is
-/// used instead of the Identifier
-#[derive(Component, Clone, Copy, Debug, Deref, PartialEq, Eq)]
-pub struct Owner(pub u32);
-
-/// A component tracking who has authority over the enity, if it is not present it behaves as if it
-/// was [Authority::Server]
-#[derive(Component, Clone, Copy, PartialEq, Eq, Default, Debug)]
-#[repr(u8)]
-pub enum Authority {
-    /// The server holds authority, this is the default
-    #[default]
-    Server,
-    /// The authority is free for anyone to claim
-    Free,
-    /// Authority is held by a specific client
-    Client(u32),
-}
-
-impl Authority {
-    /// Check if the client can claim authority
-    #[inline(always)]
-    pub fn can_claim(&self, client_id: u32) -> bool {
-        use Authority::*;
-        match *self {
-            Server => false,
-            Free => true,
-            Client(owner) => owner == client_id,
-        }
-    }
-}
-
-/// The identity of a connection
-#[repr(u8)]
-#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Identity {
-    /// The identity is the server
-    Server,
-    /// The identity is a client with the specified id
-    Client(u32),
-}
-
-impl Identity {
-    /// Check if an entity can be sent based on our local [Identity] and the entity's [Authority]
-    #[inline(always)]
-    pub fn can_send(self, auth: Option<&Authority>) -> bool {
-        match self {
-            Identity::Server => true,
-            Identity::Client(id) => auth == Some(&Authority::Client(id)),
-        }
-    }
-
-    /// Get the [Identifier] for the [Identity], panics if the value is [Identity::Server]
-    pub fn as_identifier(&self) -> Identifier {
-        let Identity::Client(client_id) = self else {
-            panic!("Cannot call as_identifier on Identity::Server")
-        };
-        Identifier::new(0, *client_id)
-    }
-}
-
-/// This component keeps track of what this entity is, the values get synced across all
-/// clients/servers. For example you could have entity type 2 for enemies, and it is the 8th enemy to be spawned so it gets id 8.
-/// entity_type 0 is special and reserved for players, the id needs to match with the client
-/// ids from renet
-#[derive(
-    Component, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-pub struct Identifier {
-    /// The type of the entity
-    pub entity_type: u8,
-    /// The ID within this type
-    pub id: u32,
-}
-
-impl Identifier {
-    /// Check if the [Identifier] is a client
-    #[inline(always)]
-    pub fn is_client(&self) -> bool {
-        self.entity_type == 0
-    }
-
-    fn new(entity_type: impl Into<u8>, id: u32) -> Self {
-        Self { entity_type: entity_type.into(), id }
-    }
-}
-
-/// An extention trait for Commands to spawn entities with an Identifier
-pub trait CommandsSpawnIdentifierExt<'a, 'w, 's> {
-    /// Spawn an entity with a client identifier
-    fn spawn_client(
-        &'a mut self,
-        client_id: u32,
-        bundle: impl Bundle,
-    ) -> EntityCommands<'w, 's, 'a>;
-
-    /// Spawn an entity with an identifier
-    fn spawn_with_id(
-        &'a mut self,
-        id_type: impl Into<u8>,
-        id: u32,
-        bundle: impl Bundle,
-    ) -> EntityCommands<'w, 's, 'a>;
-}
-
-impl<'a, 'w, 's> CommandsSpawnIdentifierExt<'a, 'w, 's> for Commands<'w, 's> {
-    #[inline(always)]
-    fn spawn_client(
-        &'a mut self,
-        client_id: u32,
-        bundle: impl Bundle,
-    ) -> EntityCommands<'w, 's, 'a> {
-        self.spawn_with_id(0, client_id, bundle)
-    }
-
-    #[inline(always)]
-    fn spawn_with_id(
-        &'a mut self,
-        id_type: impl Into<u8>,
-        id: u32,
-        bundle: impl Bundle,
-    ) -> EntityCommands<'w, 's, 'a> {
-        let id = Identifier::new(id_type, id);
-        let entity = self.spawn((id, bundle)).id();
-
-        self.add(SpawnIdentifierCommand { id, entity });
-        self.entity(entity)
-    }
-}
-
-/// An extention trait for Commands to spawn entities with an Identifier
-pub trait EntityCommandsInsertIdentifierExt {
-    /// Spawn an entity with a client identifier
-    fn insert_client(&mut self, client_id: u32) -> &mut Self;
-
-    /// Spawn an entity with an identifier
-    fn insert_id(&mut self, id_type: impl Into<u8>, id: u32) -> &mut Self;
-}
-
-impl EntityCommandsInsertIdentifierExt for EntityCommands<'_, '_, '_> {
-    #[inline(always)]
-    fn insert_client(&mut self, client_id: u32) -> &mut Self {
-        self.insert_id(0, client_id)
-    }
-
-    #[inline(always)]
-    fn insert_id(&mut self, id_type: impl Into<u8>, id: u32) -> &mut Self {
-        let id = Identifier::new(id_type, id);
-        self.insert(id);
-
-        let entity = self.id();
-        self.commands().add(SpawnIdentifierCommand { id, entity });
-
-        self
-    }
-}
-
-/// An extention trait for World to spawn entities with an Identifier
-pub trait WorldSpawnIdentifierExt<'w> {
-    /// Spawn an entity with a client identifier
-    fn spawn_client(&'w mut self, client_id: u32, bundle: impl Bundle) -> EntityWorldMut<'w>;
-
-    /// Spawn an entity with an identifier
-    fn spawn_with_id(
-        &'w mut self,
-        id_type: impl Into<u8>,
-        id: u32,
-        bundle: impl Bundle,
-    ) -> EntityWorldMut<'w>;
-}
-
-impl<'w> WorldSpawnIdentifierExt<'w> for World {
-    #[inline(always)]
-    fn spawn_client(&'w mut self, client_id: u32, bundle: impl Bundle) -> EntityWorldMut<'w> {
-        self.spawn_with_id(0, client_id, bundle)
-    }
-
-    #[inline(always)]
-    fn spawn_with_id(
-        &'w mut self,
-        id_type: impl Into<u8>,
-        id: u32,
-        bundle: impl Bundle,
-    ) -> EntityWorldMut<'w> {
-        let id = Identifier::new(id_type, id);
-        let e = self.spawn((id, bundle)).id();
-        self.resource_mut::<IdentifierMap>().insert(id, e);
-        self.entity_mut(e)
-    }
-}
-
-/// A map that tracks teh relation between [Identifier]s and [Entity]s. When an entity is
-/// despawned, this state is tracked until the tick of the despawn message happens
-#[derive(Resource, Default)]
-pub struct IdentifierMap {
-    from_ident: bevy::utils::HashMap<Identifier, EntityStatus>,
-    to_ident: bevy::utils::HashMap<Entity, Identifier>,
-}
-
-/// An error occured when mapping [Identifier]s
-#[derive(Debug)]
-pub enum IdentifierError {
-    /// The [Identifier] was despawned
-    Despawned,
-    /// The [Identifier] does not exist
-    NonExistent,
-}
-
-/// A [Result] returning a [IdentifierError]
-pub type IdentifierResult<T> = Result<T, IdentifierError>;
-
-/// The entity status for an [Identifier]
-#[repr(u8)]
-pub enum EntityStatus {
-    /// There is an [Entity] alive for the [Identifier]
-    Alive(Entity),
-    /// The [Identifier] has been despawned
-    Despawned(Tick),
-}
-
-impl IdentifierMap {
-    /// The number of tracked entities that are alive
-    pub fn n_alive(&self) -> usize {
-        self.to_ident.len()
-    }
-
-    /// The total number of identifiers being tracked, including despawned ones
-    pub fn n_total(&self) -> usize {
-        self.from_ident.len()
-    }
-
-    /// Insert the mapping from [Identifier] to [Entity]
-    #[inline(always)]
-    pub fn insert(&mut self, ident: Identifier, entity: Entity) {
-        self.from_ident.insert(ident, EntityStatus::Alive(entity));
-        self.to_ident.insert(entity, ident);
-    }
-
-    /// Get the [EntityStatus] for an [Identifier], using [Tick] when checking for despawns
-    #[inline(always)]
-    pub fn get(&self, ident: &Identifier, tick: Tick) -> IdentifierResult<&EntityStatus> {
-        let status = self.from_ident.get(ident);
-        if let Some(EntityStatus::Despawned(despawned_at)) = status {
-            if *despawned_at < tick {
-                return Err(IdentifierError::Despawned);
-            }
-        }
-        match status {
-            Some(v) => Ok(v),
-            None => Err(IdentifierError::NonExistent),
-        }
-    }
-
-    /// Get the [Entity] for an [Identifier], returning an error if it was despawned.
-    /// This function has little use outside of tests
-    #[inline(always)]
-    pub fn get_alive(&self, ident: &Identifier) -> IdentifierResult<Entity> {
-        let status = self.from_ident.get(ident);
-        if let Some(EntityStatus::Alive(entity)) = status {
-            return Ok(*entity);
-        }
-        if let Some(EntityStatus::Despawned(_)) = status {
-            return Err(IdentifierError::Despawned);
-        }
-        Err(IdentifierError::NonExistent)
-    }
-
-    /// Get the Entity for a id type and id
-    #[inline(always)]
-    pub fn get_id(&self, id_type: impl Into<u8>, id: u32) -> IdentifierResult<Entity> {
-        self.get_alive(&Identifier::new(id_type, id))
-    }
-
-    /// Get the Entity for a client if the client is present
-    #[inline(always)]
-    pub fn get_client(&self, client_id: u32) -> IdentifierResult<Entity> {
-        self.get_alive(&Identifier::new(0, client_id))
-    }
-
-    /// Check if an entity with [Identifier] is alive at the given Tick
-    pub fn is_alive(&self, ident: &Identifier, tick: Tick) -> bool {
-        let status = self.from_ident.get(ident);
-        if let Some(EntityStatus::Despawned(despawned_at)) = status {
-            if *despawned_at < tick {
-                return false;
-            }
-        }
-        status.is_some()
-    }
-
-    /// Get the [Identifier] for a [Entity]
-    pub fn from_entity(&self, entity: &Entity) -> IdentifierResult<Identifier> {
-        match self.to_ident.get(entity) {
-            Some(ident) => Ok(*ident),
-            None => Err(IdentifierError::NonExistent),
-        }
-    }
-
-    /// Mark an [Identifier] as despawned at [Tick]
-    pub fn despawn(&mut self, ident: &Identifier, entity: &Entity, tick: Tick) {
-        self.from_ident.insert(*ident, EntityStatus::Despawned(tick));
-        self.to_ident.remove(entity);
-    }
-
-    // TODO: Is this still necessary?
-    /// Remove the mapping for an [Entity], returning the [Identifier] if it existed
-    pub fn remove_entity(&mut self, entity: &Entity) -> Option<Identifier> {
-        let ident = self.to_ident.remove(entity);
-        if let Some(ident) = ident {
-            self.from_ident.remove(&ident);
-        }
-        ident
-    }
-}
-
-/// A [Command] to insert an [Identifier]-[Entity] binding into the [IdentifierMap]
-pub struct SpawnIdentifierCommand {
-    id: Identifier,
-    entity: Entity,
-}
-
-impl Command for SpawnIdentifierCommand {
-    fn apply(self, world: &mut World) {
-        world.resource_mut::<IdentifierMap>().insert(self.id, self.entity);
-    }
-}
-
-/// The channel on which despawn messages are sent
-#[derive(Resource, Deref)]
-pub struct DespawnChannel(u8);
-
-fn send_despawns(
-    mut removed: RemovedComponents<Identifier>,
-    mut map: ResMut<IdentifierMap>,
-    mut buffers: ResMut<Buffers>,
-    held: Res<HeldAuthority>,
-    our_ident: Res<Identity>,
-    tick: Res<Tick>,
-    despawn_channel: Res<DespawnChannel>,
-) {
-    for entity in removed.read() {
-        let Some(ident) = map.remove_entity(&entity) else {
-            continue;
-        };
-        if *our_ident != Identity::Server && !held.contains(&entity) {
-            continue;
-        }
-        let mut buf =
-            buffers.reserve_mut(BufferKey::new(**despawn_channel, SendRule::All), 6, *tick);
-        buf.push(0);
-        bincode::serialize_into(&mut buf, &ident).unwrap();
-    }
-}
-
-fn handle_despawns(
-    world: &mut World,
-    ident: Identity,
-    tick: Tick,
-    cursor: &mut std::io::Cursor<&[u8]>,
-) {
-    let Ok(identifier) = bincode::deserialize_from(cursor) else {
-        return;
-    };
-
-    let map = world.resource::<IdentifierMap>();
-    let Ok(EntityStatus::Alive(entity)) = map.get(&identifier, tick) else {
-        return;
-    };
-    let entity = *entity;
-    if let Identity::Client(client_id) = ident {
-        if !world
-            .entity(entity)
-            .get::<Authority>()
-            .cloned()
-            .unwrap_or_default()
-            .can_claim(client_id)
-        {
-            return;
-        }
-    }
-    if tick
-        < world
-            .entity(entity)
-            .get::<LastUpdate<()>>()
-            .map(|t| **t)
-            .unwrap_or_default()
-    {
-        return;
-    }
-
-    DespawnRecursive { entity }.apply(world);
-    let mut map = world.resource_mut::<IdentifierMap>();
-    map.despawn(&identifier, &entity, tick);
-}
-
-/// A [HashSet] keeping track of which entities we hold [Authority] for. Only updated for clients,
-/// as the server always has authority to modify things
-#[derive(Resource, Deref, DerefMut, Default)]
-pub struct HeldAuthority(bevy::utils::HashSet<Entity>);
-
-fn track_authority(
-    query: Query<(Entity, &Authority), Changed<Authority>>,
-    mut removed: RemovedComponents<Authority>,
-    mut held: ResMut<HeldAuthority>,
-    our_ident: Res<Identity>,
-) {
-    let Identity::Client(client_id) = *our_ident else {
-        return;
-    };
-    for (entity, auth) in query.iter() {
-        if auth.can_claim(client_id) {
-            held.insert(entity);
-        } else {
-            held.remove(&entity);
-        }
-    }
-    for entity in removed.read() {
-        held.remove(&entity);
     }
 }
 
@@ -766,6 +273,27 @@ pub trait SendMethod: 'static + Sized + Sync + Send {
     /// Return who needs to receive the packet, if the [Identifier] of an entity is a client, the
     /// client id is provided. If None is returned the packet is not sent
     fn rule(client: Option<u32>) -> Option<SendRule>;
+
+    /// A function to check if a packet should be sent based on our [Identity] and the entity's [Authority],
+    /// returns the [SendRule] if it should be sent
+    #[inline(always)]
+    fn should_send(
+        our_identity: Identity,
+        auth: Option<&Authority>,
+        owner: Option<&Owner>,
+        ident: Identifier,
+    ) -> Option<SendRule> {
+        if !our_identity.can_send(auth) {
+            return None;
+        }
+
+        let client_id = match (owner, ident.is_client()) {
+            (Some(client_id), _) => Some(**client_id),
+            (_, true) => Some(ident.id),
+            (_, false) => None,
+        };
+        Self::rule(client_id)
+    }
 }
 
 /// The Direction for a bundle or event, either [ClientToServer] or [ServerToClient]
@@ -842,9 +370,9 @@ mod test_impl;
 #[cfg(any(test, feature = "test"))]
 pub use test_impl::*;
 
-#[cfg(not(any(test, feature = "test")))]
+#[cfg(feature = "renet")]
 mod renet_impl;
-#[cfg(not(any(test, feature = "test")))]
+#[cfg(feature = "renet")]
 pub use renet_impl::*;
 
 #[derive(Resource, Deref, DerefMut)]
@@ -922,7 +450,10 @@ impl AppNetworkingExt for App {
         self.world.resource_mut::<Channels>().insert(CHANNEL);
 
         if self.world.get_resource::<Dir>().is_none()
-            && self.world.get_resource::<Events<NetworkEvent<Event>>>().is_none()
+            && self
+                .world
+                .get_resource::<Events<NetworkEvent<Event>>>()
+                .is_none()
         {
             self.init_resource::<Events<NetworkEvent<Event>>>();
             self.add_systems(Last, clear_events::<NetworkEvent<Event>>);
@@ -983,11 +514,18 @@ fn handle_event<Event: NetworkedEvent>(
 
     let map = world.resource::<IdentifierMap>();
     let Ok(event) = Event::from_networked(tick, map, networked) else {
-        warn!("Got event {:?} with unresolvable Identifier", Event::type_path());
+        warn!(
+            "Got event {:?} with unresolvable Identifier",
+            Event::type_path()
+        );
         return;
     };
 
-    let network_event = NetworkEvent { sender: ident, tick, event };
+    let network_event = NetworkEvent {
+        sender: ident,
+        tick,
+        event,
+    };
     world.send_event(network_event);
 }
 
@@ -1003,7 +541,7 @@ impl<Dir: Direction> Handlers<Dir> {
     /// Construct a [Handlers] with the specified capacity
     pub fn with_capacity(cap: usize) -> Self {
         let mut handlers = bevy::utils::HashMap::<u8, ApplyChangeFn>::with_capacity(1 + cap);
-        handlers.insert(0, handle_despawns);
+        handlers.insert(0, despawn::handle_despawns);
         Self {
             handlers,
             _phantom: PhantomData::<Dir>,
@@ -1035,27 +573,6 @@ impl<Dir: Direction> Handlers<Dir> {
     }
 }
 
-/// A function to check if a packet should be sent based on our [Identity] and the entity's [Authority],
-/// returns the [SendRule] if it should be sent
-#[inline(always)]
-pub fn should_send<Method: SendMethod>(
-    our_identity: Identity,
-    auth: Option<&Authority>,
-    owner: Option<&Owner>,
-    ident: Identifier,
-) -> Option<SendRule> {
-    if !our_identity.can_send(auth) {
-        return None;
-    }
-
-    let client_id = match (owner, ident.is_client()) {
-        (Some(client_id), _) => Some(**client_id),
-        (_, true) => Some(ident.id),
-        (_, false) => None,
-    };
-    Method::rule(client_id)
-}
-
 fn receive_messages<Dir: Direction>(world: &mut World) {
     let handlers = world
         .remove_resource::<Handlers<Dir::Reverse>>()
@@ -1074,7 +591,9 @@ fn receive_messages<Dir: Direction>(world: &mut World) {
 }
 
 fn send_buffers<Dir: Direction>(world: &mut World) {
-    let mut buf = world.remove_resource::<Buffers>().expect("Missing Buffers resource");
+    let mut buf = world
+        .remove_resource::<Buffers>()
+        .expect("Missing Buffers resource");
 
     let mut net = world
         .remove_resource::<Dir::NetRes>()
@@ -1098,7 +617,10 @@ pub struct Id<T> {
 
 impl<T> Id<T> {
     fn new(id: u8) -> Self {
-        Self { id, _phantom: PhantomData::<T> }
+        Self {
+            id,
+            _phantom: PhantomData::<T>,
+        }
     }
 }
 
@@ -1173,13 +695,16 @@ impl ClientNetworkingPlugin {
 
 impl Plugin for ClientNetworkingPlugin {
     fn build(&self, app: &mut App) {
-        app
-            .insert_resource(Identity::Client(0)) // TODO: Figure out our own client id
-            .add_plugins(NetworkingPlugin {
-                despawn_channel: self.despawn_channel,
-                tick_schedule: self.tick_schedule,
-                _phantom: PhantomData::<ClientToServer>,
-            });
+        app.insert_resource(Identity::Client(0)) // TODO: Figure out our own client id
+            .add_plugins((
+                tick::TickPlugin {
+                    schedule: self.tick_schedule,
+                },
+                NetworkingPlugin {
+                    despawn_channel: self.despawn_channel,
+                    _phantom: PhantomData::<ClientToServer>,
+                },
+            ));
     }
 }
 
@@ -1204,11 +729,16 @@ impl ServerNetworkingPlugin {
 
 impl Plugin for ServerNetworkingPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(Identity::Server).add_plugins(NetworkingPlugin {
-            despawn_channel: self.despawn_channel,
-            tick_schedule: self.tick_schedule,
-            _phantom: PhantomData::<ServerToClient>,
-        });
+        app.insert_resource(Identity::Server).add_plugins((
+            tick::TickPlugin {
+                schedule: self.tick_schedule,
+            },
+            NetworkingPlugin {
+                despawn_channel: self.despawn_channel,
+
+                _phantom: PhantomData::<ServerToClient>,
+            },
+        ));
     }
 }
 
@@ -1241,31 +771,34 @@ pub enum InternalSet {
 
 struct NetworkingPlugin<Direction> {
     despawn_channel: u8,
-    tick_schedule: Interned<dyn ScheduleLabel>,
     _phantom: PhantomData<Direction>,
 }
 
 impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Tick>()
-            .init_resource::<Dir>()
+        app.init_resource::<Dir>()
             .init_resource::<Buffers>()
             .init_resource::<Channels>()
             .init_resource::<IdentifierMap>()
-            .init_resource::<HeldAuthority>()
+            .init_resource::<client_authority::HeldAuthority>()
             .init_resource::<RegistryDir<ServerToClient>>()
             .init_resource::<RegistryDir<ClientToServer>>()
             .init_resource::<Events<NewConnection>>()
-            .init_resource::<Tick>()
-            .insert_resource(DespawnChannel(self.despawn_channel))
-            .add_systems(self.tick_schedule, increment_tick.in_set(TickSet))
-            .add_systems(Last, |mut events: ResMut<Events<NewConnection>>| events.clear())
+            .insert_resource(despawn::DespawnChannel(self.despawn_channel))
+            .add_systems(Last, |mut events: ResMut<Events<NewConnection>>| {
+                events.clear()
+            })
             // TODO: Also configure renet's sets to be in Receive/Send, if it is enabled
-            .configure_sets(PreUpdate, (
-                    InternalSet::ReadPackets,
-                    InternalSet::ReceiveMessages,
-            ).chain().in_set(NetworkingSet::Receive))
-            .add_systems(PreUpdate, (receive_messages::<Dir>.in_set(InternalSet::ReceiveMessages),).chain())
+            .configure_sets(
+                PreUpdate,
+                (InternalSet::ReadPackets, InternalSet::ReceiveMessages)
+                    .chain()
+                    .in_set(NetworkingSet::Receive),
+            )
+            .add_systems(
+                PreUpdate,
+                (receive_messages::<Dir>.in_set(InternalSet::ReceiveMessages),).chain(),
+            )
             .configure_sets(
                 PostUpdate,
                 (InternalSet::SendChanges, InternalSet::SendPackets)
@@ -1275,17 +808,20 @@ impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
             .add_systems(
                 PostUpdate,
                 (
-                    (send_despawns, track_authority, iter::iterate_world::<Dir>)
+                    (
+                        despawn::send_despawns,
+                        client_authority::track_authority,
+                        iter::iterate_world::<Dir>,
+                    )
                         .chain()
                         .in_set(InternalSet::SendChanges),
-                    send_buffers::<Dir>.after(InternalSet::SendChanges).before(InternalSet::SendPackets).in_set(NetworkingSet::Send),
+                    send_buffers::<Dir>
+                        .after(InternalSet::SendChanges)
+                        .before(InternalSet::SendPackets)
+                        .in_set(NetworkingSet::Send),
                 ),
             )
             .add_systems(Startup, generate_ids::<ServerToClient>.in_set(GenerateSet))
             .add_systems(Startup, generate_ids::<ClientToServer>.in_set(GenerateSet));
     }
-}
-
-fn increment_tick(mut tick: ResMut<Tick>) {
-    *tick = *tick + 1;
 }

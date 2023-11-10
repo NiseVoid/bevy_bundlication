@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};

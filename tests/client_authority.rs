@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
@@ -46,7 +46,10 @@ fn test_client_authority() {
     assert_eq!(app.world.entity(e2).get::<Number>(), None);
     assert_eq!(app.world.entity(e3).get::<Number>(), None);
     assert_eq!(app.world.entity(e4).get::<Number>(), Some(&Number(8)));
-    assert_eq!(app.world.entity(e4).get::<Authority>(), Some(&Authority::Client(1)));
+    assert_eq!(
+        app.world.entity(e4).get::<Authority>(),
+        Some(&Authority::Client(1))
+    );
     assert_eq!(app.world.entity(e5).get::<Number>(), None);
 
     let mut msgs = ServerMessages::default();

@@ -3,8 +3,13 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
-fn bevy_bundlication_path() -> syn::Path {
-    syn::parse("bevy_bundlication".parse::<TokenStream>().unwrap()).unwrap()
+fn import_path() -> syn::Path {
+    syn::parse(
+        "bevy_bundlication::macro_export"
+            .parse::<TokenStream>()
+            .unwrap(),
+    )
+    .unwrap()
 }
 
 struct BundleField {
@@ -35,7 +40,10 @@ fn parse_ident(
 ) -> syn::Result<syn::Ident> {
     // Parse in format " = ident"
     let Some(next) = token_iter.next() else {
-        return Err(syn::Error::new(ident.span(), "expected to be followed by ="));
+        return Err(syn::Error::new(
+            ident.span(),
+            "expected to be followed by =",
+        ));
     };
     let proc_macro2::TokenTree::Punct(punct) = next else {
         return Err(syn::Error::new(next.span(), "expected ="));
@@ -44,7 +52,10 @@ fn parse_ident(
         return Err(syn::Error::new(punct.span(), "expected ="));
     }
     let Some(next) = token_iter.next() else {
-        return Err(syn::Error::new(punct.span(), "expected to be followed by ident"));
+        return Err(syn::Error::new(
+            punct.span(),
+            "expected to be followed by ident",
+        ));
     };
     let proc_macro2::TokenTree::Ident(ident) = next else {
         return Err(syn::Error::new(next.span(), "expected ident"));
@@ -112,7 +123,7 @@ const NETWORKED_ATTRIBUTE_UPDATE_NAME: &str = "update";
 #[proc_macro_derive(NetworkedBundle, attributes(networked))]
 pub fn derive_bundle(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
-    let bevy_bundlication_path = bevy_bundlication_path();
+    let import_path = import_path();
 
     let named_fields = match get_named_struct_fields(&ast.data) {
         Ok(fields) => &fields.named,
@@ -142,7 +153,10 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         .iter()
         .map(|field| field.ident.as_ref().unwrap())
         .collect::<Vec<_>>();
-    let field_type = named_fields.iter().map(|field| &field.ty).collect::<Vec<_>>();
+    let field_type = named_fields
+        .iter()
+        .map(|field| &field.ty)
+        .collect::<Vec<_>>();
 
     let mut component_type = Vec::new();
     let mut spawn_only_type = Vec::new();
@@ -184,13 +198,13 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 });
             } else {
                 network_type.push(quote! {
-                    <#field_type as #bevy_bundlication_path::NetworkedComponent>::As
+                    <#field_type as #import_path::NetworkedComponent>::As
                 });
                 to_networked.push(quote! {
-                    <#field_type as #bevy_bundlication_path::NetworkedComponent>::to_networked(#var, tick, map)
+                    <#field_type as #import_path::NetworkedComponent>::to_networked(#var, tick, map)
                 });
                 from_networked.push(quote! {
-                    <#field_type as #bevy_bundlication_path::NetworkedComponent>::from_networked(tick, map, comp)
+                    <#field_type as #import_path::NetworkedComponent>::from_networked(tick, map, comp)
                 });
             }
 
@@ -226,40 +240,40 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         #[allow(clippy::too_many_arguments, clippy::type_complexity)]
         impl #impl_generics #struct_name #ty_generics #where_clause {
             #[inline(always)]
-            fn send(buffers: &mut #bevy_bundlication_path::Buffers, packet_id: u8, tick: #bevy_bundlication_path::Tick, channel: u8, rule: #bevy_bundlication_path::SendRule, map: &#bevy_bundlication_path::IdentifierMap, identifier: #bevy_bundlication_path::Identifier, #(#component_var: &#component_type, )*) {
+            fn send(buffers: &mut #import_path::Buffers, packet_id: u8, tick: #import_path::Tick, channel: u8, rule: #import_path::SendRule, map: &#import_path::IdentifierMap, identifier: #import_path::Identifier, #(#component_var: &#component_type, )*) {
                 #(
                     let Ok(#component_var) = #to_networked else {return;};
                 )*
 
                 let packet_size = 1 +
-                    #(#bevy_bundlication_path::bincode_export::serialized_size(&#component_var).unwrap() +)*
-                    #bevy_bundlication_path::bincode_export::serialized_size(&identifier).unwrap();
+                    #(#import_path::bincode::serialized_size(&#component_var).unwrap() +)*
+                    #import_path::bincode::serialized_size(&identifier).unwrap();
 
-                let mut buf = buffers.reserve_mut(#bevy_bundlication_path::BufferKey::new(channel, rule), packet_size as usize, tick);
+                let mut buf = buffers.reserve_mut(#import_path::BufferKey::new(channel, rule), packet_size as usize, tick);
 
                 buf.push(packet_id);
-                #bevy_bundlication_path::bincode_export::serialize_into(&mut buf, &identifier).unwrap();
+                #import_path::bincode::serialize_into(&mut buf, &identifier).unwrap();
                 #(
-                    #bevy_bundlication_path::bincode_export::serialize_into(&mut buf, &#component_var).unwrap();
+                    #import_path::bincode::serialize_into(&mut buf, &#component_var).unwrap();
                 )*
             }
 
-            fn send_changes<const CHANNEL: u8, Method: #bevy_bundlication_path::SendMethod>(
-                id: #bevy_bundlication_path::Identifier,
-                owner: Option<&#bevy_bundlication_path::Owner>,
-                authority: Option<&#bevy_bundlication_path::Authority>,
+            fn send_changes<const CHANNEL: u8, Method: #import_path::SendMethod>(
+                id: #import_path::Identifier,
+                owner: Option<&#import_path::Owner>,
+                authority: Option<&#import_path::Authority>,
                 entity: &bevy::ecs::world::EntityRef,
 
                 packet_id: u8,
 
-                buffers: &mut #bevy_bundlication_path::Buffers,
-                map: &#bevy_bundlication_path::IdentifierMap,
+                buffers: &mut #import_path::Buffers,
+                map: &#import_path::IdentifierMap,
 
-                tick: #bevy_bundlication_path::Tick,
-                our_identity: #bevy_bundlication_path::Identity,
+                tick: #import_path::Tick,
+                our_identity: #import_path::Identity,
                 new_clients: &[u32],
             ) {
-                let Some(mut rule) = #bevy_bundlication_path::should_send::<Method>(our_identity, authority, owner, id) else {return;};
+                let Some(mut rule) = Method::should_send(our_identity, authority, owner, id) else {return;};
                 #( let #component_var = entity.get_ref::<#component_type>().unwrap(); )*
 
                 let mut changed = #( #component_var.is_changed() || )* false;
@@ -272,41 +286,41 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 Self::send(buffers, packet_id, tick, CHANNEL, rule, &map, id, #(&*#component_var, )*);
             }
 
-            fn apply_changes(world: &mut World, ident: #bevy_bundlication_path::Identity, tick: #bevy_bundlication_path::Tick, mut cursor: &mut std::io::Cursor<&[u8]>) {
-                let Ok(identifier) = #bevy_bundlication_path::bincode_export::deserialize_from(&mut cursor) else {return;};
-                let map = world.resource::<#bevy_bundlication_path::IdentifierMap>();
+            fn apply_changes(world: &mut World, ident: #import_path::Identity, tick: #import_path::Tick, mut cursor: &mut std::io::Cursor<&[u8]>) {
+                let Ok(identifier) = #import_path::bincode::deserialize_from(&mut cursor) else {return;};
+                let map = world.resource::<#import_path::IdentifierMap>();
                 let entity = match map.get(&identifier, tick) {
-                    Ok(#bevy_bundlication_path::EntityStatus::Alive(entity)) => Some(*entity),
-                    Ok(#bevy_bundlication_path::EntityStatus::Despawned(_)) => {return;},
+                    Ok(#import_path::EntityStatus::Alive(entity)) => Some(*entity),
+                    Ok(#import_path::EntityStatus::Despawned(_)) => {return;},
                     Err(e) => {None},
                 };
 
                 #(
-                    let Ok(comp) = #bevy_bundlication_path::bincode_export::deserialize_from::<_, #network_type>(&mut cursor) else {return;};
-                    let Ok(#component_var): #bevy_bundlication_path::IdentifierResult<#component_type> = #from_networked else {return;};
+                    let Ok(comp) = #import_path::bincode::deserialize_from::<_, #network_type>(&mut cursor) else {return;};
+                    let Ok(#component_var): #import_path::IdentifierResult<#component_type> = #from_networked else {return;};
                 )*
 
                 if let Some(mut entity) = entity.and_then(|entity| world.get_entity_mut(entity)) {
-                    let bundle_tick = entity.get::<#bevy_bundlication_path::LastUpdate<Self>>().map(|t| **t).unwrap_or_default();
+                    let bundle_tick = entity.get::<#import_path::LastUpdate<Self>>().map(|t| **t).unwrap_or_default();
                     if bundle_tick >= tick {
                         return;
                     }
 
-                    let auth = entity.get::<#bevy_bundlication_path::Authority>().map(|a| *a).unwrap_or_default();
-                    if let #bevy_bundlication_path::Identity::Client(client_id) = ident {
+                    let auth = entity.get::<#import_path::Authority>().map(|a| *a).unwrap_or_default();
+                    if let #import_path::Identity::Client(client_id) = ident {
                         if !auth.can_claim(client_id) {
                             return;
                         }
-                        entity.insert(#bevy_bundlication_path::Authority::Client(client_id));
+                        entity.insert(#import_path::Authority::Client(client_id));
                     }
-                    entity.insert(#bevy_bundlication_path::LastUpdate::<Self>::new(tick));
-                    let entity_tick = entity.get::<#bevy_bundlication_path::LastUpdate<()>>().map(|t| **t).unwrap_or_default();
+                    entity.insert(#import_path::LastUpdate::<Self>::new(tick));
+                    let entity_tick = entity.get::<#import_path::LastUpdate<()>>().map(|t| **t).unwrap_or_default();
                     if tick > entity_tick {
-                        entity.insert(#bevy_bundlication_path::LastUpdate::<()>::new(tick));
+                        entity.insert(#import_path::LastUpdate::<()>::new(tick));
                     }
 
                     #(
-                        match entity.get_mut::<#bevy_bundlication_path::Remote<#component_type>>() {
+                        match entity.get_mut::<#import_path::Remote<#component_type>>() {
                             Some(mut remote) => {remote.update(#component_var, tick)},
                             None => {
                                 match entity.get_mut::<#component_type>() {
@@ -322,11 +336,11 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                             None => {entity.insert(#spawn_only_type::default());}
                         }
                     )*
-                } else if ident == #bevy_bundlication_path::Identity::Server {
+                } else if ident == #import_path::Identity::Server {
                     let entity = world.spawn((
                         identifier,
-                        #bevy_bundlication_path::LastUpdate::<Self>::new(tick),
-                        #bevy_bundlication_path::LastUpdate::<()>::new(tick),
+                        #import_path::LastUpdate::<Self>::new(tick),
+                        #import_path::LastUpdate::<()>::new(tick),
                         #(
                             #component_var,
                         )*
@@ -334,13 +348,13 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                             #spawn_only_type::default(),
                         )*
                     )).id();
-                    let mut map = world.resource_mut::<#bevy_bundlication_path::IdentifierMap>();
+                    let mut map = world.resource_mut::<#import_path::IdentifierMap>();
                     map.insert(identifier, entity);
                 }
             }
         }
 
-        impl #impl_generics #bevy_bundlication_path::NetworkedBundle for #struct_name #ty_generics #where_clause {
+        impl #impl_generics #import_path::NetworkedBundle for #struct_name #ty_generics #where_clause {
             fn get_component_ids(world: &mut World) -> Vec<bevy::ecs::component::ComponentId> {
                 let mut list = Vec::with_capacity(#n_filters);
                 #( list.push(world.init_component::<#component_type>()); )*
@@ -348,11 +362,11 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 list
             }
 
-            fn serializer<const CHANNEL: u8, Method: #bevy_bundlication_path::SendMethod>() -> #bevy_bundlication_path::SendChangeFn {
+            fn serializer<const CHANNEL: u8, Method: #import_path::SendMethod>() -> #import_path::SendChangeFn {
                 Self::send_changes::<CHANNEL, Method>
             }
 
-            fn handler() -> #bevy_bundlication_path::ApplyChangeFn {
+            fn handler() -> #import_path::ApplyChangeFn {
                 Self::apply_changes
             }
         }

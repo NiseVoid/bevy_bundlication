@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 use SendRule::*;
 
 use bevy::{prelude::*, reflect::TypePath};
@@ -104,7 +104,11 @@ fn test_overlapping_bundles() {
     msgs.output.clear();
 
     // Edit the HP of Player 7, should create a message for player 7 with coordinates and HP
-    **app.world.query::<&mut Hp>().get_mut(&mut app.world, entity7).unwrap() = 5;
+    **app
+        .world
+        .query::<&mut Hp>()
+        .get_mut(&mut app.world, entity7)
+        .unwrap() = 5;
     app.update();
 
     let mut msgs = app.world.resource_mut::<ServerMessages>();
@@ -136,7 +140,11 @@ fn test_overlapping_bundles() {
     msgs.output.clear();
 
     // Edit the HP of the non-player entity, this should generate no messages
-    **app.world.query::<&mut Hp>().get_mut(&mut app.world, entity2).unwrap() = 1234;
+    **app
+        .world
+        .query::<&mut Hp>()
+        .get_mut(&mut app.world, entity2)
+        .unwrap() = 1234;
     app.update();
 
     let msgs = app.world.resource_mut::<ServerMessages>();

@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::{prelude::*, LastUpdate};
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
@@ -38,10 +38,19 @@ fn test_no_old_changes() {
     app.update();
 
     assert_eq!(app.world.entity(e1).get::<Number>(), Some(&Number(5)));
-    assert_eq!(app.world.entity(e1).get::<Last>(), Some(&Last::new(Tick(5))));
+    assert_eq!(
+        app.world.entity(e1).get::<Last>(),
+        Some(&Last::new(Tick(5)))
+    );
     assert_eq!(app.world.entity(e2).get::<Number>(), None);
-    assert_eq!(app.world.entity(e2).get::<Last>(), Some(&Last::new(Tick(3))));
+    assert_eq!(
+        app.world.entity(e2).get::<Last>(),
+        Some(&Last::new(Tick(3)))
+    );
     let e3 = app.world.resource::<IdentifierMap>().get_id(1, 3).unwrap();
     assert_eq!(app.world.entity(e3).get::<Number>(), Some(&Number(7)));
-    assert_eq!(app.world.entity(e3).get::<Last>(), Some(&Last::new(Tick(7))));
+    assert_eq!(
+        app.world.entity(e3).get::<Last>(),
+        Some(&Last::new(Tick(7)))
+    );
 }

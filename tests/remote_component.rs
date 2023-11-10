@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,10 @@ fn test_remote_components() {
 
     // This entity has the complete bundle
     let e1 = app.world.spawn_client(1, Number(5)).id();
-    let e2 = app.world.spawn_client(2, (Number(6), Remote::new(Number(2)))).id();
+    let e2 = app
+        .world
+        .spawn_client(2, (Number(6), Remote::new(Number(2))))
+        .id();
 
     let mut msgs = ClientMessages::default();
 
@@ -35,6 +38,15 @@ fn test_remote_components() {
 
     assert_eq!(app.world.entity(e1).get::<Number>(), Some(&Number(12)));
     assert_eq!(app.world.entity(e2).get::<Number>(), Some(&Number(6)));
-    assert_eq!(app.world.entity(e2).get::<Remote<Number>>().map(|n| **n), Some(Number(13)));
-    assert_eq!(app.world.entity(e2).get::<Remote<Number>>().map(|n| n.tick()), Some(Tick(1)));
+    assert_eq!(
+        app.world.entity(e2).get::<Remote<Number>>().map(|n| **n),
+        Some(Number(13))
+    );
+    assert_eq!(
+        app.world
+            .entity(e2)
+            .get::<Remote<Number>>()
+            .map(|n| n.tick()),
+        Some(Tick(1))
+    );
 }

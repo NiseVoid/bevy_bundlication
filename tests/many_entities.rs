@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,12 @@ fn test_many_entities() {
     app.register_bundle::<ServerToAll, NumberBundle, 1>();
 
     #[allow(clippy::unnecessary_to_owned)]
-    for label in app.world.resource::<bevy::app::MainScheduleOrder>().labels.to_vec() {
+    for label in app
+        .world
+        .resource::<bevy::app::MainScheduleOrder>()
+        .labels
+        .to_vec()
+    {
         app.edit_schedule(label, |schedule| {
             schedule.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
         });
@@ -50,7 +55,12 @@ fn test_many_entities() {
     app.register_bundle::<ServerToAll, NumberBundle, 1>();
 
     #[allow(clippy::unnecessary_to_owned)]
-    for label in app.world.resource::<bevy::app::MainScheduleOrder>().labels.to_vec() {
+    for label in app
+        .world
+        .resource::<bevy::app::MainScheduleOrder>()
+        .labels
+        .to_vec()
+    {
         app.edit_schedule(label, |schedule| {
             schedule.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
         });

@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 use SendRule::*;
 
 use bevy::{prelude::*, reflect::TypePath};
@@ -12,7 +12,11 @@ pub struct Position(u8, u8, u8);
 
 impl NetworkedWrapper<Transform> for Position {
     fn from_component(_: Tick, _: &IdentifierMap, from: &Transform) -> IdentifierResult<Self> {
-        Ok(Self(from.translation.x as u8, from.translation.y as u8, from.translation.z as u8))
+        Ok(Self(
+            from.translation.x as u8,
+            from.translation.y as u8,
+            from.translation.z as u8,
+        ))
     }
     fn to_component(self, _: Tick, _: &IdentifierMap) -> IdentifierResult<Transform> {
         Ok(Transform {
@@ -52,12 +56,19 @@ fn test_attributes() {
     );
 
     // This entity is missing CanBeMissing, but it's optional so it still gets sent
-    app.world
-        .spawn_client(2, (Transform::from_translation(Vec3::new(6., 5., 4.)), Marker));
+    app.world.spawn_client(
+        2,
+        (Transform::from_translation(Vec3::new(6., 5., 4.)), Marker),
+    );
 
     // This entity is missing the required marker
-    app.world
-        .spawn_client(3, (Transform::from_translation(Vec3::new(18., 28., 38.)), CanBeMissing));
+    app.world.spawn_client(
+        3,
+        (
+            Transform::from_translation(Vec3::new(18., 28., 38.)),
+            CanBeMissing,
+        ),
+    );
 
     app.update();
 

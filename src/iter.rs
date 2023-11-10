@@ -27,7 +27,9 @@ pub fn iterate_world<Dir: Direction>(world: &mut World) {
     let id_map = world.remove_resource::<IdentifierMap>().unwrap();
     let ident = world.remove_resource::<Identity>().unwrap();
 
-    let mut cache = world.remove_resource::<ArchetypeCache>().unwrap_or_default();
+    let mut cache = world
+        .remove_resource::<ArchetypeCache>()
+        .unwrap_or_default();
 
     let archetypes = world.archetypes();
 

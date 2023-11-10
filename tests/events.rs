@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 use SendRule::*;
 
 use bevy::{ecs::system::Command, prelude::*, reflect::TypePath};
@@ -76,26 +76,38 @@ fn test_send_events() {
     app.update();
 
     SendEvent {
-        event: TargetedEvent { target: e1, value: 10 },
+        event: TargetedEvent {
+            target: e1,
+            value: 10,
+        },
         channel: 17,
         rule: SendRule::Only(1),
     }
     .apply(&mut app.world);
     SendEvent {
-        event: TargetedEvent { target: e2, value: 11 },
+        event: TargetedEvent {
+            target: e2,
+            value: 11,
+        },
         channel: 18,
         rule: SendRule::Only(2),
     }
     .apply(&mut app.world);
 
     SendEvent {
-        event: BroadcastEvent { about: e1, value: 30 },
+        event: BroadcastEvent {
+            about: e1,
+            value: 30,
+        },
         channel: 23,
         rule: SendRule::All,
     }
     .apply(&mut app.world);
     SendEvent {
-        event: BroadcastEvent { about: e1, value: 31 },
+        event: BroadcastEvent {
+            about: e1,
+            value: 31,
+        },
         channel: 23,
         rule: SendRule::All,
     }
@@ -185,12 +197,18 @@ fn test_receive_events() {
     assert!(events.contains(&NetworkEvent {
         tick: Tick(2),
         sender: Identity::Client(1),
-        event: TargetedEvent { target: e2, value: 10 },
+        event: TargetedEvent {
+            target: e2,
+            value: 10
+        },
     }));
     assert!(events.contains(&NetworkEvent {
         tick: Tick(3),
         sender: Identity::Client(2),
-        event: TargetedEvent { target: e1, value: 11 },
+        event: TargetedEvent {
+            target: e1,
+            value: 11
+        },
     }));
 
     let events: Vec<_> = app
@@ -202,6 +220,9 @@ fn test_receive_events() {
     assert!(events.contains(&NetworkEvent {
         tick: Tick(7),
         sender: Identity::Client(1),
-        event: BroadcastEvent { about: e1, value: 12 },
+        event: BroadcastEvent {
+            about: e1,
+            value: 12
+        },
     }));
 }

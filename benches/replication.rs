@@ -1,4 +1,4 @@
-use bevy_bundlication::*;
+use bevy_bundlication::prelude::*;
 
 use std::time::{Duration, Instant};
 
@@ -78,7 +78,12 @@ fn init_app(app: &mut App) {
     app.register_bundle::<ServerToAll, PlayerBundle, 0>();
 
     #[allow(clippy::unnecessary_to_owned)]
-    for label in app.world.resource::<bevy::app::MainScheduleOrder>().labels.to_vec() {
+    for label in app
+        .world
+        .resource::<bevy::app::MainScheduleOrder>()
+        .labels
+        .to_vec()
+    {
         app.edit_schedule(label, |schedule| {
             schedule.set_executor_kind(bevy::ecs::schedule::ExecutorKind::SingleThreaded);
         });
@@ -95,7 +100,12 @@ fn spawn_entities(app: &mut App) {
 
 fn copy_messages(server_app: &mut App, client_app: &mut App) {
     let mut client_msgs = ClientMessages::default();
-    for msg in server_app.world.resource_mut::<ServerMessages>().output.drain(..) {
+    for msg in server_app
+        .world
+        .resource_mut::<ServerMessages>()
+        .output
+        .drain(..)
+    {
         client_msgs.input.push(msg.2)
     }
     client_app.insert_resource(client_msgs);

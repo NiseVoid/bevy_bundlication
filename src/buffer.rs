@@ -23,8 +23,11 @@ impl SendRule {
         match self {
             Self::All => Some(Self::List(new_clients.to_vec())),
             Self::Except(c) => {
-                let list: Vec<u32> =
-                    new_clients.iter().filter(|new_c| **new_c != c).cloned().collect();
+                let list: Vec<u32> = new_clients
+                    .iter()
+                    .filter(|new_c| **new_c != c)
+                    .cloned()
+                    .collect();
                 if list.is_empty() {
                     return None;
                 }
