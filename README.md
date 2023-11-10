@@ -21,3 +21,12 @@ Network replication for bevy based on a bundle pattern.
 - Add per-entity per-bundle client authority control
 - Client-side packet buffering (to reduce jitter and support accurate interpolation)
 - Per-entity visibility control
+
+License
+
+All code in this repository is dual-licensed under either:
+
+    MIT License (LICENSE-MIT or http://opensource.org/licenses/MIT)
+    Apache License, Version 2.0 (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+
+at your option.
