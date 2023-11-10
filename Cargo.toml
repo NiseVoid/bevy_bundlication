@@ -12,6 +12,7 @@ keywords = [
   "replication",
 ]
 categories = ["game-development", "network-programming"]
+exclude = ["benches/*", "tests/*"]
 
 edition = "2021"
 
