@@ -131,20 +131,6 @@ fn register_many_bundles(app: &mut App) {
     app.register_bundle::<ServerToAll, ConstBundle<8>, 0>();
     app.register_bundle::<ServerToAll, ConstBundle<9>, 0>();
     app.register_bundle::<ServerToAll, ConstBundle<10>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<11>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<12>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<13>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<14>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<15>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<16>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<17>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<18>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<19>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<20>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<21>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<22>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<23>, 0>();
-    app.register_bundle::<ServerToAll, ConstBundle<24>, 0>();
 }
 
 fn spawn_numbers(app: &mut App) {
@@ -279,7 +265,7 @@ fn replication(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(50);
+    config = Criterion::default().sample_size(50).measurement_time(Duration::from_secs(10));
     targets = replication
 }
 criterion_main!(benches);

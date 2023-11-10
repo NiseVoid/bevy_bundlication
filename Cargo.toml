@@ -17,7 +17,7 @@ exclude = ["benches/*", "tests/*"]
 edition = "2021"
 
 [dependencies]
-bevy_bundlication_macros = {path = "./macros"}
+bevy_bundlication_macros = {version = "0.0.1", path = "macros"}
 
 bevy = {version = "0.12", default_features=false}
 renet = {version = "0.0.13", default-features=false, features = [ "bevy" ], optional = true}
@@ -32,13 +32,6 @@ renet = ["dep:renet"]
 
 [dev-dependencies]
 bevy_bundlication = { path = ".", default-features = false, features = ["test"] }
-criterion = { version = "0.5", default-features = false, features = [
-  "cargo_bench_support",
-] }
-
-[[bench]]
-name = "replication"
-harness = false
 
 [patch.crates-io]
 renet = { git = "https://github.com/lucaspoffo/renet" }
