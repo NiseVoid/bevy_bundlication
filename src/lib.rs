@@ -23,7 +23,7 @@ mod component_info;
 pub use component_info::Remote;
 
 mod bundle_info;
-pub use bundle_info::{LastSent, LastUpdate};
+pub use bundle_info::LastUpdate;
 
 mod iter;
 
@@ -76,7 +76,7 @@ pub mod macro_export {
 
     pub use crate::{
         buffer::{BufferKey, Buffers},
-        bundle_info::{LastSent, LastUpdate},
+        bundle_info::LastUpdate,
         client_authority::Identity,
         prelude::*,
         ApplyChangeFn, SendChangeFn, SendMethod,
