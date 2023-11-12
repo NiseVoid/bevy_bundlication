@@ -21,10 +21,10 @@ bevy_bundlication works with a pattern similar to a Bundle from bevy. Anything m
 Bundles need to be registered to the app, and can have extra rules on fields.
 
 ```rust
-#[derive(Default)]
+#[derive(Component, Default)]
 pub struct Player;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Component, Serialize, Deserialize, Clone)]
 pub struct Speed(f32);
 
 #[derive(Serialize, Deserialize)]
