@@ -12,7 +12,8 @@ fn add_numbers(current: &mut Number, new: Number) {
     current.0 += new.0
 }
 
-#[derive(NetworkedBundle, Bundle, TypePath, Default)]
+#[allow(dead_code)]
+#[derive(NetworkedBundle, TypePath, Default)]
 struct SumBundle {
     #[networked(update = add_numbers)]
     sum: Number,

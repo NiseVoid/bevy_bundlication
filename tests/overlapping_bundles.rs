@@ -28,7 +28,8 @@ impl NetworkedComponent for Hp {
     }
 }
 
-#[derive(NetworkedBundle, Bundle, TypePath, Default)]
+#[allow(dead_code)]
+#[derive(NetworkedBundle, TypePath, Default)]
 struct Test1Bundle {
     coord: Coordinates,
 }

@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Component, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
 pub struct Number(u8);
 
-#[derive(NetworkedBundle, Bundle, TypePath)]
+#[allow(dead_code)]
+#[derive(NetworkedBundle, TypePath)]
 struct NumberBundle {
     number: Number,
 }

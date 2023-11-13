@@ -198,10 +198,9 @@ pub type SendChangeFn = fn(
 /// A function that applies changes from packets received over the network
 pub type ApplyChangeFn = fn(&mut World, Identity, Tick, &mut std::io::Cursor<&[u8]>) -> ();
 
-/// A trait that allows bundles to be networked, it expects a bundle to register systems that send
-/// messages and return a handle to apply changes for its packets. This should not be impl'd
-/// directly and should instead be derived using the macro
-pub trait NetworkedBundle: Bundle + TypePath + Any + Sized {
+/// A trait that allows groups of components to be networked, this trait should not be impl'd
+/// directly and instead be implemented by the derive macro of the same name.
+pub trait NetworkedBundle: TypePath + Any + Sized {
     /// Fetch the component ids contained in this bundle
     fn get_component_ids(world: &mut World) -> Vec<bevy::ecs::component::ComponentId>;
 
