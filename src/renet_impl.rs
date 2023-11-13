@@ -1,69 +1,128 @@
 use crate::*;
-use renet::ClientId;
 
-impl Direction for ClientToServer {
-    type Reverse = ServerToClient;
-    type NetRes = RenetClient;
+use bevy::prelude::resource_exists;
+use bevy_renet::{
+    renet::{Bytes, ClientId},
+    {RenetReceive, RenetSend},
+};
 
+/// A plugin that adds renet support to a server
+pub struct RenetServerPlugin;
+
+impl Plugin for RenetServerPlugin {
+    fn build(&self, app: &mut App) {
+        app.configure_sets(
+            PreUpdate,
+            (
+                RenetReceive.in_set(InternalSet::ReadPackets),
+                NetworkingSet::Receive.run_if(resource_exists::<RenetServer>()),
+            ),
+        )
+        .configure_sets(
+            PostUpdate,
+            (
+                RenetSend.in_set(InternalSet::SendPackets),
+                NetworkingSet::Send.run_if(resource_exists::<RenetServer>()),
+            ),
+        )
+        .add_systems(
+            PreUpdate,
+            receive_messages::<ServerToClient, RenetServer>.in_set(InternalSet::ReceiveMessages),
+        )
+        .add_systems(
+            PostUpdate,
+            send_buffers::<ServerToClient, RenetServer>.in_set(InternalSet::SendBuffers),
+        );
+    }
+}
+
+/// A plugin that adds renet support to a client
+pub struct RenetClientPlugin;
+
+impl Plugin for RenetClientPlugin {
+    fn build(&self, app: &mut App) {
+        app.configure_sets(
+            PreUpdate,
+            (
+                RenetReceive.in_set(InternalSet::ReadPackets),
+                NetworkingSet::Receive.run_if(resource_exists::<RenetClient>()),
+            ),
+        )
+        .configure_sets(
+            PostUpdate,
+            (
+                RenetSend.in_set(InternalSet::SendPackets),
+                NetworkingSet::Send.run_if(resource_exists::<RenetClient>()),
+            ),
+        )
+        .add_systems(
+            PreUpdate,
+            receive_messages::<ClientToServer, RenetClient>.in_set(InternalSet::ReceiveMessages),
+        )
+        .add_systems(
+            PostUpdate,
+            send_buffers::<ClientToServer, RenetClient>.in_set(InternalSet::SendBuffers),
+        );
+    }
+}
+
+impl<Dir: Direction> NetImpl<Dir> for RenetClient {
     fn receive_messages(
-        net: &mut Self::NetRes,
+        &mut self,
         world: &mut World,
-        handlers: &Handlers<Self::Reverse>,
+        handlers: &Handlers<Dir::Reverse>,
         channels: &[u8],
     ) {
         for channel in channels {
-            while let Some(msg) = net.receive_message(*channel) {
+            while let Some(msg) = self.receive_message(*channel) {
                 handlers.process(world, Identity::Server, &msg);
             }
         }
     }
 
-    fn send_messages(net: &mut Self::NetRes, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
+    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
         for (BufferKey { channel, rule: _ }, buf) in msgs {
-            net.send_message(channel, buf);
+            self.send_message(channel, buf);
         }
     }
 }
 
-impl Direction for ServerToClient {
-    type Reverse = ClientToServer;
-    type NetRes = RenetServer;
-
+impl<Dir: Direction> NetImpl<Dir> for RenetServer {
     fn receive_messages(
-        net: &mut Self::NetRes,
+        &mut self,
         world: &mut World,
-        handlers: &Handlers<Self::Reverse>,
+        handlers: &Handlers<Dir::Reverse>,
         channels: &[u8],
     ) {
-        for client_id in net.clients_id() {
+        for client_id in self.clients_id() {
             for channel in channels {
-                while let Some(msg) = net.receive_message(client_id, *channel) {
+                while let Some(msg) = self.receive_message(client_id, *channel) {
                     handlers.process(world, Identity::Client(client_id.raw() as u32), &msg);
                 }
             }
         }
     }
 
-    fn send_messages(net: &mut Self::NetRes, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
+    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
         for (BufferKey { channel, rule }, buf) in msgs {
             match rule {
                 SendRule::All => {
-                    net.broadcast_message(channel, buf);
+                    self.broadcast_message(channel, buf);
                 }
                 SendRule::Except(client_id) => {
-                    net.broadcast_message_except(
+                    self.broadcast_message_except(
                         ClientId::from_raw(client_id as u64),
                         channel,
                         buf,
                     );
                 }
                 SendRule::Only(client_id) => {
-                    net.send_message(ClientId::from_raw(client_id as u64), channel, buf);
+                    self.send_message(ClientId::from_raw(client_id as u64), channel, buf);
                 }
                 SendRule::List(list) => {
-                    let buf = renet::Bytes::from(buf);
+                    let buf = Bytes::from(buf);
                     for client_id in list {
-                        net.send_message(
+                        self.send_message(
                             ClientId::from_raw(client_id as u64),
                             channel,
                             buf.clone(),

@@ -1,5 +1,37 @@
 use crate::*;
 
+/// A plugin that adds test functionality to the server
+pub struct TestServerPlugin;
+
+impl Plugin for TestServerPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            PreUpdate,
+            receive_messages::<ServerToClient, ServerMessages>.in_set(InternalSet::ReceiveMessages),
+        )
+        .add_systems(
+            PostUpdate,
+            send_buffers::<ServerToClient, ServerMessages>.in_set(InternalSet::SendBuffers),
+        );
+    }
+}
+
+/// A plugin that adds test functionality to the client
+pub struct TestClientPlugin;
+
+impl Plugin for TestClientPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            PreUpdate,
+            receive_messages::<ClientToServer, ClientMessages>.in_set(InternalSet::ReceiveMessages),
+        )
+        .add_systems(
+            PostUpdate,
+            send_buffers::<ClientToServer, ClientMessages>.in_set(InternalSet::SendBuffers),
+        );
+    }
+}
+
 /// The input and output for a client
 #[derive(Resource, Default)]
 pub struct ClientMessages {
@@ -9,24 +41,16 @@ pub struct ClientMessages {
     pub output: Vec<(u8, Vec<u8>)>,
 }
 
-impl Direction for ClientToServer {
-    type Reverse = ServerToClient;
-    type NetRes = ClientMessages;
-
-    fn receive_messages(
-        net: &mut Self::NetRes,
-        world: &mut World,
-        handlers: &Handlers<Self::Reverse>,
-        _: &[u8],
-    ) {
-        for b in net.input.drain(..) {
+impl<Dir: Direction> NetImpl<Dir> for ClientMessages {
+    fn receive_messages(&mut self, world: &mut World, handlers: &Handlers<Dir::Reverse>, _: &[u8]) {
+        for b in self.input.drain(..) {
             handlers.process(world, Identity::Server, &b);
         }
     }
 
-    fn send_messages(net: &mut Self::NetRes, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
+    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
         for (BufferKey { channel, rule: _ }, buf) in msgs {
-            net.output.push((channel, buf));
+            self.output.push((channel, buf));
         }
     }
 }
@@ -40,24 +64,16 @@ pub struct ServerMessages {
     pub output: Vec<(u8, SendRule, Vec<u8>)>,
 }
 
-impl Direction for ServerToClient {
-    type Reverse = ClientToServer;
-    type NetRes = ServerMessages;
-
-    fn receive_messages(
-        net: &mut Self::NetRes,
-        world: &mut World,
-        handlers: &Handlers<Self::Reverse>,
-        _: &[u8],
-    ) {
-        for (client_id, b) in net.input.drain(..) {
+impl<Dir: Direction> NetImpl<Dir> for ServerMessages {
+    fn receive_messages(&mut self, world: &mut World, handlers: &Handlers<Dir::Reverse>, _: &[u8]) {
+        for (client_id, b) in self.input.drain(..) {
             handlers.process(world, Identity::Client(client_id), &b);
         }
     }
 
-    fn send_messages(net: &mut Self::NetRes, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
+    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
         for (BufferKey { channel, rule }, buf) in msgs {
-            net.output.push((channel, rule, buf));
+            self.output.push((channel, rule, buf));
         }
     }
 }

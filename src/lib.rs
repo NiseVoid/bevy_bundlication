@@ -95,7 +95,7 @@ use bevy::{
 };
 
 #[cfg(feature = "renet")]
-use renet::{RenetClient, RenetServer};
+use bevy_renet::renet::{RenetClient, RenetServer};
 use serde::{Deserialize, Serialize};
 
 /// An event fired when a client connects. When it is fired packets for all entities and bundles
@@ -300,19 +300,30 @@ pub trait SendMethod: 'static + Sized + Sync + Send {
 pub trait Direction: Resource + 'static + Sized + Sync + Send + std::fmt::Debug + Default {
     /// The opposite direction
     type Reverse: Direction;
-    /// The resource used for this send direction, used to send and receive messsages
-    type NetRes: Resource + Sync + Send + Sized;
+}
 
+impl Direction for ClientToServer {
+    type Reverse = ServerToClient;
+}
+
+impl Direction for ServerToClient {
+    type Reverse = ClientToServer;
+}
+
+/// A trait for a networking implementation, implementing this trait and creating a plugin to add
+/// the necessary systems, ordering, and conditions allows you to use this crate with any
+/// low-level networking crate
+pub trait NetImpl<Dir: Direction>: Resource + Sync + Send + Sized {
     /// Receive all messages and handle them by calling process on [Handlers]
     fn receive_messages(
-        net: &mut Self::NetRes,
+        &mut self,
         world: &mut World,
-        handlers: &Handlers<Self::Reverse>,
+        handlers: &Handlers<Dir::Reverse>,
         channels: &[u8],
     );
 
     /// Send the provided messages
-    fn send_messages(net: &mut Self::NetRes, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>);
+    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>);
 }
 
 /// The client to server [Direction]
@@ -573,38 +584,34 @@ impl<Dir: Direction> Handlers<Dir> {
     }
 }
 
-fn receive_messages<Dir: Direction>(world: &mut World) {
+/// The system that receives and processes messages, should be added by the plugin that enables
+/// support for your used networking crate
+pub fn receive_messages<Dir: Direction, NetRes: NetImpl<Dir>>(world: &mut World) {
     let handlers = world
         .remove_resource::<Handlers<Dir::Reverse>>()
         .expect("Missing Handlers resource");
 
     let mut net = world
-        .remove_resource::<Dir::NetRes>()
+        .remove_resource::<NetRes>()
         .expect("Missing NetRes resource");
 
     let channels: Vec<u8> = world.resource::<Channels>().iter().cloned().collect();
 
-    Dir::receive_messages(&mut net, world, &handlers, &channels);
+    NetRes::receive_messages(&mut net, world, &handlers, &channels);
 
     world.insert_resource(handlers);
     world.insert_resource(net);
 }
 
-fn send_buffers<Dir: Direction>(world: &mut World) {
-    let mut buf = world
-        .remove_resource::<Buffers>()
-        .expect("Missing Buffers resource");
-
-    let mut net = world
-        .remove_resource::<Dir::NetRes>()
-        .expect("Missing NetRes resource");
-
-    Dir::send_messages(&mut net, buf.buffers.drain(..));
+/// The system that sends messages, should be added by the plugin that enables support for your
+/// used networking crate
+pub fn send_buffers<Dir: Direction, NetRes: NetImpl<Dir>>(
+    mut buf: ResMut<Buffers>,
+    mut net: ResMut<NetRes>,
+) {
+    net.send_messages(buf.buffers.drain(..));
 
     buf.clear();
-
-    world.insert_resource(net);
-    world.insert_resource(buf);
 }
 
 /// The packet ID for a bundle/event
@@ -695,6 +702,11 @@ impl ClientNetworkingPlugin {
 
 impl Plugin for ClientNetworkingPlugin {
     fn build(&self, app: &mut App) {
+        #[cfg(feature = "renet")]
+        app.add_plugins(RenetClientPlugin);
+        #[cfg(any(test, feature = "test"))]
+        app.add_plugins(TestClientPlugin);
+
         app.insert_resource(Identity::Client(0)) // TODO: Figure out our own client id
             .add_plugins((
                 tick::TickPlugin {
@@ -729,6 +741,11 @@ impl ServerNetworkingPlugin {
 
 impl Plugin for ServerNetworkingPlugin {
     fn build(&self, app: &mut App) {
+        #[cfg(feature = "renet")]
+        app.add_plugins(RenetServerPlugin);
+        #[cfg(any(test, feature = "test"))]
+        app.add_plugins(TestServerPlugin);
+
         app.insert_resource(Identity::Server).add_plugins((
             tick::TickPlugin {
                 schedule: self.tick_schedule,
@@ -765,13 +782,15 @@ pub enum InternalSet {
     ReceiveMessages,
     /// Send changes
     SendChanges,
+    /// Send buffers
+    SendBuffers,
     /// Send packets over the network
     SendPackets,
 }
 
-struct NetworkingPlugin<Direction> {
+struct NetworkingPlugin<Dir: Direction> {
     despawn_channel: u8,
-    _phantom: PhantomData<Direction>,
+    _phantom: PhantomData<Dir>,
 }
 
 impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
@@ -795,31 +814,25 @@ impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
                     .chain()
                     .in_set(NetworkingSet::Receive),
             )
-            .add_systems(
-                PreUpdate,
-                (receive_messages::<Dir>.in_set(InternalSet::ReceiveMessages),).chain(),
-            )
             .configure_sets(
                 PostUpdate,
-                (InternalSet::SendChanges, InternalSet::SendPackets)
+                (
+                    InternalSet::SendChanges,
+                    InternalSet::SendBuffers,
+                    InternalSet::SendPackets,
+                )
                     .chain()
                     .in_set(NetworkingSet::Send),
             )
             .add_systems(
                 PostUpdate,
                 (
-                    (
-                        despawn::send_despawns,
-                        client_authority::track_authority,
-                        iter::iterate_world::<Dir>,
-                    )
-                        .chain()
-                        .in_set(InternalSet::SendChanges),
-                    send_buffers::<Dir>
-                        .after(InternalSet::SendChanges)
-                        .before(InternalSet::SendPackets)
-                        .in_set(NetworkingSet::Send),
-                ),
+                    despawn::send_despawns,
+                    client_authority::track_authority,
+                    iter::iterate_world::<Dir>,
+                )
+                    .chain()
+                    .in_set(InternalSet::SendChanges),
             )
             .add_systems(Startup, generate_ids::<ServerToClient>.in_set(GenerateSet))
             .add_systems(Startup, generate_ids::<ClientToServer>.in_set(GenerateSet));
