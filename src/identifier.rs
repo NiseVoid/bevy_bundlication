@@ -32,6 +32,16 @@ impl Identifier {
         self.entity_type == 0
     }
 
+    /// Get the type of the [Identifier]
+    pub fn entity_type(&self) -> u8 {
+        self.entity_type
+    }
+
+    /// Get the ID of the [Identifier]
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+
     /// Construct an [Identifier] from an entity type and ID
     pub fn new(entity_type: impl Into<u8>, id: u32) -> Self {
         Self {

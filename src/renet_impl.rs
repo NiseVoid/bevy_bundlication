@@ -15,14 +15,14 @@ impl Plugin for RenetServerPlugin {
             PreUpdate,
             (
                 RenetReceive.in_set(InternalSet::ReadPackets),
-                NetworkingSet::Receive.run_if(resource_exists::<RenetServer>()),
+                BundlicationSet::Receive.run_if(resource_exists::<RenetServer>()),
             ),
         )
         .configure_sets(
             PostUpdate,
             (
                 RenetSend.in_set(InternalSet::SendPackets),
-                NetworkingSet::Send.run_if(resource_exists::<RenetServer>()),
+                BundlicationSet::Send.run_if(resource_exists::<RenetServer>()),
             ),
         )
         .add_systems(
@@ -45,14 +45,14 @@ impl Plugin for RenetClientPlugin {
             PreUpdate,
             (
                 RenetReceive.in_set(InternalSet::ReadPackets),
-                NetworkingSet::Receive.run_if(resource_exists::<RenetClient>()),
+                BundlicationSet::Receive.run_if(resource_exists::<RenetClient>()),
             ),
         )
         .configure_sets(
             PostUpdate,
             (
                 RenetSend.in_set(InternalSet::SendPackets),
-                NetworkingSet::Send.run_if(resource_exists::<RenetClient>()),
+                BundlicationSet::Send.run_if(resource_exists::<RenetClient>()),
             ),
         )
         .add_systems(

@@ -52,23 +52,20 @@ pub mod prelude {
 
     pub use crate::{
         buffer::SendRule,
-        client_authority::Authority,
+        client_authority::{Authority, Identity},
         component_info::Remote,
         identifier::{
             EntityStatus, Identifier, IdentifierError, IdentifierMap, IdentifierResult, Owner,
         },
         tick::{Tick, TickSet},
-        ClientNetworkingPlugin, ClientToServer, NetworkEvent, NetworkedBundle, NetworkedComponent,
-        NetworkedEvent, NetworkedWrapper, SendEvent, ServerNetworkingPlugin, ServerToAll,
-        ServerToClient, ServerToObserver, ServerToOwner,
+        BundlicationSet, ClientNetworkingPlugin, ClientToServer, NetworkEvent, NetworkedBundle,
+        NetworkedComponent, NetworkedEvent, NetworkedWrapper, SendEvent, ServerNetworkingPlugin,
+        ServerToAll, ServerToClient, ServerToObserver, ServerToOwner,
     };
     pub use bevy_bundlication_macros::NetworkedBundle;
 
     #[cfg(any(test, feature = "test"))]
-    pub use crate::{
-        client_authority::Identity,
-        test_impl::{ClientMessages, ServerMessages},
-    };
+    pub use crate::test_impl::{ClientMessages, ServerMessages};
 }
 
 pub mod macro_export {
@@ -766,7 +763,7 @@ struct GenerateSet;
 
 /// A [SystemSet] containing all systems to replicate data between apps
 #[derive(SystemSet, Clone, PartialEq, Eq, Debug, Hash)]
-pub enum NetworkingSet {
+pub enum BundlicationSet {
     /// The set that contains all systems to receive data
     Receive,
     /// The set that contains all data to send data
@@ -812,7 +809,7 @@ impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
                 PreUpdate,
                 (InternalSet::ReadPackets, InternalSet::ReceiveMessages)
                     .chain()
-                    .in_set(NetworkingSet::Receive),
+                    .in_set(BundlicationSet::Receive),
             )
             .configure_sets(
                 PostUpdate,
@@ -822,7 +819,7 @@ impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
                     InternalSet::SendPackets,
                 )
                     .chain()
-                    .in_set(NetworkingSet::Send),
+                    .in_set(BundlicationSet::Send),
             )
             .add_systems(
                 PostUpdate,
