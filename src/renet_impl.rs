@@ -2,14 +2,14 @@ use crate::*;
 
 use bevy::prelude::resource_exists;
 use bevy_renet::{
-    renet::{Bytes, ClientId},
+    renet::{Bytes, ClientId, RenetClient, RenetServer},
     {RenetReceive, RenetSend},
 };
 
 /// A plugin that adds renet support to a server
-pub struct RenetServerPlugin;
+pub struct BundlicationRenetServerPlugin;
 
-impl Plugin for RenetServerPlugin {
+impl Plugin for BundlicationRenetServerPlugin {
     fn build(&self, app: &mut App) {
         app.configure_sets(
             PreUpdate,
@@ -37,9 +37,9 @@ impl Plugin for RenetServerPlugin {
 }
 
 /// A plugin that adds renet support to a client
-pub struct RenetClientPlugin;
+pub struct BundlicationRenetClientPlugin;
 
-impl Plugin for RenetClientPlugin {
+impl Plugin for BundlicationRenetClientPlugin {
     fn build(&self, app: &mut App) {
         app.configure_sets(
             PreUpdate,

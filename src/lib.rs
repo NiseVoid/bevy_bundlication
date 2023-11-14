@@ -91,8 +91,6 @@ use bevy::{
     utils::{intern::Interned, HashMap},
 };
 
-#[cfg(feature = "renet")]
-use bevy_renet::renet::{RenetClient, RenetServer};
 use serde::{Deserialize, Serialize};
 
 /// An event fired when a client connects. When it is fired packets for all entities and bundles
@@ -699,7 +697,7 @@ impl ClientNetworkingPlugin {
 impl Plugin for ClientNetworkingPlugin {
     fn build(&self, app: &mut App) {
         #[cfg(feature = "renet")]
-        app.add_plugins(RenetClientPlugin);
+        app.add_plugins(BundlicationRenetClientPlugin);
         #[cfg(any(test, feature = "test"))]
         app.add_plugins(TestClientPlugin);
 
@@ -738,7 +736,7 @@ impl ServerNetworkingPlugin {
 impl Plugin for ServerNetworkingPlugin {
     fn build(&self, app: &mut App) {
         #[cfg(feature = "renet")]
-        app.add_plugins(RenetServerPlugin);
+        app.add_plugins(BundlicationRenetServerPlugin);
         #[cfg(any(test, feature = "test"))]
         app.add_plugins(TestServerPlugin);
 
