@@ -73,7 +73,7 @@ pub mod prelude {
     #[cfg(any(test, feature = "test"))]
     pub use crate::{
         test_impl::{ClientMessages, ServerMessages},
-        NewConnection,
+        Connected, StartReplication,
     };
 }
 
@@ -103,14 +103,18 @@ use bevy::{
 
 use serde::{Deserialize, Serialize};
 
-/// An event fired when a client connects. When it is fired packets for all entities and bundles
-/// that are relevant to this client are sent
+/// An event fired when a client is ready for replication. When it is fired packets for all
+/// entities and bundles that are relevant to this client are sent
 #[derive(Event, Deref)]
-pub struct NewConnection(pub Identity);
+pub struct StartReplication(pub Identity);
+
+/// An event fired when a client connects
+#[derive(Event, Deref)]
+pub struct Connected(pub Identity);
 
 /// An event fired when a client disconnects.
 #[derive(Event, Deref)]
-pub struct RemoveConnection(pub Identity);
+pub struct Disconnected(pub Identity);
 
 // TODO: Change error handling. Reads should not be forced to resort to panics
 /// A trait needed to network components, provided by a blanket impl if the component has
@@ -154,7 +158,7 @@ impl<T: Component + Serialize + for<'a> Deserialize<'a>> NetworkedComponent for 
 
 /// A trait that allows wrapping a component as another type for bevy_bundlication. Useful when working
 /// with components from bevy itself or 3rd party plugins
-pub trait NetworkedWrapper<From: Component>: Serialize + for<'a> Deserialize<'a> {
+pub trait NetworkedWrapper<From: Component> {
     /// Write the component to the network, using the current [Tick] and [IdentifierMap] to
     /// convert any necessary values
     fn write_data(
@@ -166,7 +170,7 @@ pub trait NetworkedWrapper<From: Component>: Serialize + for<'a> Deserialize<'a>
 
     /// Read the component from the network, using the [Tick] of the packet it was contained
     /// in and the [IdentifierMap] to convert any necessary values
-    fn read_new(reader: impl Read, tick: Tick, map: &IdentifierMap) -> IdentifierResult<From>;
+    fn read_new(reader: impl Read, tick: Tick, map: &mut IdentifierMap) -> IdentifierResult<From>;
 
     /// Read the component in-place from the network, this can be used to write directly to
     fn read_in_place(
@@ -827,6 +831,7 @@ fn load_event_id<Event: NetworkedEvent, Dir: Direction>(
 pub struct Connection {
     ident: Identity,
     new: bool,
+    replicate: bool,
 }
 
 /// A list of connections
@@ -836,21 +841,33 @@ pub struct Connections(Vec<Connection>);
 fn update_connections(
     mut connected: ResMut<Connections>,
     mut buffers: ResMut<Buffers>,
-    mut new: ResMut<Events<NewConnection>>,
-    mut remove: ResMut<Events<RemoveConnection>>,
+    mut new: ResMut<Events<Connected>>,
+    mut replicate: ResMut<Events<StartReplication>>,
+    mut remove: ResMut<Events<Disconnected>>,
 ) {
-    for RemoveConnection(ident) in remove.drain() {
+    for Disconnected(ident) in remove.drain() {
         buffers.remove(ident);
         connected.retain(|c| c.ident != ident);
     }
 
     for con in connected.iter_mut() {
-        con.new = false;
+        if con.replicate {
+            con.new = false;
+        }
     }
-    connected.extend(new.drain().map(|NewConnection(n)| Connection {
+    connected.extend(new.drain().map(|Connected(n)| Connection {
         ident: n,
         new: true,
+        replicate: false,
     }));
+    for StartReplication(n) in replicate.drain() {
+        for con in connected.iter_mut() {
+            if con.ident != n {
+                continue;
+            }
+            con.replicate = true;
+        }
+    }
 }
 
 /// A plugin that adds a client's network replication capabilities to the app
@@ -892,6 +909,7 @@ impl Plugin for ClientNetworkingPlugin {
             .insert_resource(Connections(vec![Connection {
                 ident: Identity::Server,
                 new: false,
+                replicate: true,
             }]));
     }
 }
@@ -991,8 +1009,9 @@ impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
             .init_resource::<client_authority::HeldAuthority>()
             .init_resource::<RegistryDir<ServerToClient>>()
             .init_resource::<RegistryDir<ClientToServer>>()
-            .init_resource::<Events<NewConnection>>()
-            .init_resource::<Events<RemoveConnection>>()
+            .init_resource::<Events<Connected>>()
+            .init_resource::<Events<Disconnected>>()
+            .init_resource::<Events<StartReplication>>()
             .insert_resource(despawn::DespawnChannel(self.despawn_channel))
             .configure_sets(
                 PreUpdate,

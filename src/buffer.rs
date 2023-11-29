@@ -35,7 +35,7 @@ const PREALLOC: usize = 1500;
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct BufferKey {
     /// The ID of the client the buffer is for
-    pub destination: Identity,
+    pub recipient: Identity,
     /// The channel the message needs to be sent on
     pub channel: u8,
 }
@@ -71,7 +71,7 @@ pub struct Buffers {
 impl Buffers {
     /// Remove all registered buffers for the given [`Identity`]
     pub fn remove(&mut self, ident: Identity) {
-        self.current.retain(|key, _| key.destination != ident);
+        self.current.retain(|key, _| key.recipient != ident);
     }
 
     /// Take or create buffers for the provided channel and clients and get a [`Write`]able type
@@ -80,22 +80,18 @@ impl Buffers {
         tick: Tick,
         channel: u8,
         this_run: bevy::ecs::component::Tick,
-        targets: impl ExactSizeIterator<Item = (impl Into<Identity>, impl Into<RecipientData>)>,
+        targets: impl Iterator<Item = (impl Into<Identity>, impl Into<RecipientData>)>,
     ) -> TakenBuffers<'_> {
         let mut taken = self.taken_cache.take().unwrap_or_default();
-        taken.reserve_exact(targets.len());
 
-        for (destination, info) in targets {
-            let destination = destination.into();
+        for (recipient, info) in targets {
+            let recipient = recipient.into();
             let buffer = self
                 .current
-                .remove(&BufferKey {
-                    destination,
-                    channel,
-                })
+                .remove(&BufferKey { recipient, channel })
                 .unwrap_or(Vec::with_capacity(PREALLOC));
             taken.push(TakenBuffer {
-                destination,
+                recipient,
                 info: info.into(),
                 buffer,
                 last_fragment: 0,
@@ -148,7 +144,7 @@ pub struct WriteFilters {
 
 /// A buffer that was taken from [`Buffers`]
 pub struct TakenBuffer {
-    destination: Identity,
+    recipient: Identity,
     info: RecipientData,
     buffer: Vec<u8>,
     last_fragment: usize,
@@ -171,7 +167,7 @@ impl<'a> Drop for TakenBuffers<'a> {
         for taken in taken.drain(..) {
             self.buffers.current.insert(
                 BufferKey {
-                    destination: taken.destination,
+                    recipient: taken.recipient,
                     channel: self.channel,
                 },
                 taken.buffer,
@@ -202,7 +198,7 @@ impl<'a> TakenBuffers<'a> {
     /// Send a message with filters
     pub fn send_filtered(&mut self, filter: WriteFilters, buf: &mut WriteBuffer) {
         for taken in &mut self.taken {
-            if filter.rule.includes(taken.destination)
+            if filter.rule.includes(taken.recipient)
                 && (taken.info.last_ack.is_none()
                     || filter
                         .changed
@@ -242,7 +238,7 @@ impl<'a> TakenBuffers<'a> {
 
                 self.buffers.filled.push((
                     BufferKey {
-                        destination: taken.destination,
+                        recipient: taken.recipient,
                         channel: self.channel,
                     },
                     packet,

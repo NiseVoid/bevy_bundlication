@@ -29,7 +29,7 @@ impl NetworkedWrapper<Transform> for Position {
         .unwrap();
         Ok(())
     }
-    fn read_new(r: impl Read, _: Tick, _: &IdentifierMap) -> IdentifierResult<Transform> {
+    fn read_new(r: impl Read, _: Tick, _: &mut IdentifierMap) -> IdentifierResult<Transform> {
         let pos: Self = deserialize(r).unwrap();
         Ok(Transform {
             translation: Vec3::new(pos.0 as f32, pos.1 as f32, pos.2 as f32),
@@ -81,7 +81,8 @@ fn test_attributes() {
             CanBeMissing,
         ),
     );
-    app.world.send_event(NewConnection(Identity::Client(1)));
+    app.world.send_event(Connected(Identity::Client(1)));
+    app.world.send_event(StartReplication(Identity::Client(1)));
 
     app.update();
 

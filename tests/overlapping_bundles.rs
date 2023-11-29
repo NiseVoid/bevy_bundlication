@@ -79,8 +79,10 @@ fn test_overlapping_bundles() {
             },),
         )
         .id();
-    app.world.send_event(NewConnection(Identity::Client(1)));
-    app.world.send_event(NewConnection(Identity::Client(7)));
+    app.world.send_event(Connected(Identity::Client(1)));
+    app.world.send_event(Connected(Identity::Client(7)));
+    app.world.send_event(StartReplication(Identity::Client(1)));
+    app.world.send_event(StartReplication(Identity::Client(7)));
 
     app.register_bundle::<ServerToOwner, Test2Bundle, 0>();
     app.register_bundle::<ServerToObserver, Test1Bundle, 0>();

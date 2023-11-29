@@ -1,4 +1,4 @@
-use bevy_bundlication::{prelude::*, NewConnection};
+use bevy_bundlication::prelude::*;
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
@@ -35,7 +35,8 @@ fn test_new_client() {
     // We up the tick, change one element and connect a new client
     app.insert_resource(Tick(2));
     **app.world.entity_mut(e).get_mut::<Number>().unwrap() = 3;
-    app.world.send_event(NewConnection(Identity::Client(13)));
+    app.world.send_event(Connected(Identity::Client(13)));
+    app.world.send_event(StartReplication(Identity::Client(13)));
 
     app.update();
 

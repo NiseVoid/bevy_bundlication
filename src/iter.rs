@@ -15,7 +15,7 @@ pub fn iterate_world<Dir: Direction>(world: &mut World) {
         world.insert_resource(connections);
         return;
     }
-    let new_clients = connections.iter().any(|c| c.new);
+    let new_clients = connections.iter().any(|c| c.new && c.replicate);
 
     let mut buffers = world.remove_resource::<Buffers>().unwrap();
     let mut buf = world.remove_resource::<WriteBuffer>().unwrap();
@@ -39,13 +39,16 @@ pub fn iterate_world<Dir: Direction>(world: &mut World) {
         tick,
         0, // TODO: Allow configuration of channel that gets entities
         this_run,
-        connections.iter().map(|i| {
-            (
+        connections.iter().filter_map(|i| {
+            if !i.replicate {
+                return None;
+            }
+            Some((
                 i.ident,
                 RecipientData {
                     last_ack: if i.new { None } else { Some(last_run) },
                 },
-            )
+            ))
         }),
     );
 

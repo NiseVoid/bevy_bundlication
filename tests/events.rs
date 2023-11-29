@@ -76,8 +76,11 @@ fn test_send_events() {
     app.init_resource::<ServerMessages>();
     app.register_event::<ServerToClient, TargetedEvent, 17>();
     app.register_event::<ServerToClient, BroadcastEvent, 23>();
-    app.world.send_event(NewConnection(Identity::Client(1)));
-    app.world.send_event(NewConnection(Identity::Client(2)));
+
+    app.world.send_event(Connected(Identity::Client(1)));
+    app.world.send_event(Connected(Identity::Client(2)));
+    app.world.send_event(StartReplication(Identity::Client(1)));
+    app.world.send_event(StartReplication(Identity::Client(2)));
 
     let e1 = app.world.spawn_client(1, ()).id();
     let e2 = app.world.spawn_client(2, ()).id();

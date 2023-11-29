@@ -72,15 +72,8 @@ impl<Dir: Direction> NetImpl<Dir> for ServerMessages {
     }
 
     fn send_messages(&mut self, msgs: impl Iterator<Item = (BufferKey, Vec<u8>)>) {
-        for (
-            BufferKey {
-                channel,
-                destination,
-            },
-            buf,
-        ) in msgs
-        {
-            self.output.push((channel, destination, buf));
+        for (BufferKey { channel, recipient }, buf) in msgs {
+            self.output.push((channel, recipient, buf));
         }
     }
 }

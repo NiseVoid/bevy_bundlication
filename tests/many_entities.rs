@@ -37,7 +37,8 @@ fn test_many_entities() {
     for i in 0..25000 {
         app.world.spawn_client(i, Number((i % 255) as u8));
     }
-    app.world.send_event(NewConnection(Identity::Client(0)));
+    app.world.send_event(Connected(Identity::Client(0)));
+    app.world.send_event(StartReplication(Identity::Client(0)));
 
     app.update();
 

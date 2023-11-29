@@ -188,10 +188,10 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 write_component.push(quote! {
-                    #networked_as::write_data(&#var, &mut buffer, tick, id_map).unwrap()
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::write_data(&#var, &mut buffer, tick, id_map).unwrap()
                 });
                 new = quote! {
-                    #networked_as::read_new(&mut buffer, tick, id_map).unwrap()
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(&mut buffer, tick, id_map).unwrap()
                 };
             } else {
                 write_component.push(quote! {
@@ -208,17 +208,17 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 
             if let Some(ref update_with) = field_info.update_with {
                 update_component.push(quote! {
-                    #update_with(&mut #var, #new);
+                    #update_with(#var, #new);
                 });
             } else if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 update_component.push(quote! {
-                    #networked_as::read_in_place(&mut #var, &mut buffer, tick, id_map).unwrap()
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, &mut buffer, tick, id_map).unwrap()
                 });
             } else {
                 update_component.push(quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::read_in_place(&mut #var, &mut buffer, tick, id_map)
+                        ::read_in_place(#var, &mut buffer, tick, id_map)
                         .unwrap()
                 });
             }
@@ -335,7 +335,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                         },
                         None => {
                             match entity.get_mut::<#component_type>() {
-                                Some(mut #component_var) => {#update_component}
+                                Some(mut #component_var) => {let #component_var = &mut *#component_var; #update_component}
                                 None => {
                                     entity.insert(#new_component);
                                 }
