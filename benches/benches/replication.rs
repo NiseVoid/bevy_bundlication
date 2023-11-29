@@ -76,7 +76,8 @@ const ENTITIES: u32 = 1000;
 
 fn init_app(app: &mut App) {
     app.register_bundle::<ServerToAll, PlayerBundle, 0>();
-    app.world.send_event(NewConnection(Identity::Client(1)));
+    app.world.send_event(Connected(Identity::Client(1)));
+    app.world.send_event(StartReplication(Identity::Client(1)));
 
     #[allow(clippy::unnecessary_to_owned)]
     for label in app
