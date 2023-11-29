@@ -33,7 +33,7 @@ impl Plugin for TestClientPlugin {
 }
 
 /// The input and output for a client
-#[derive(Resource, Default)]
+#[derive(Resource, Clone, Default)]
 pub struct ClientMessages {
     /// The input, a list of packet bytes
     pub input: Vec<Vec<u8>>,

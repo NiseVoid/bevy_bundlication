@@ -1,4 +1,4 @@
-use bevy_bundlication::prelude::*;
+use bevy_bundlication::{prelude::*, LastUpdate};
 
 use std::time::{Duration, Instant};
 
@@ -290,6 +290,65 @@ fn replication(c: &mut Criterion) {
                 elapsed += instant.elapsed();
 
                 assert_eq!(client_app.world.entities().len(), ENTITIES);
+            }
+
+            elapsed
+        })
+    });
+
+    c.bench_function("update overlapping bundles", |b| {
+        b.iter_custom(|iter| {
+            let mut elapsed = Duration::ZERO;
+            for _ in 0..iter {
+                let mut server_app = App::new();
+                server_app.add_plugins(ServerNetworkingPlugin::new(0));
+                server_app.init_resource::<ServerMessages>();
+
+                register_many_bundles(&mut server_app);
+                init_app(&mut server_app);
+                spawn_numbers(&mut server_app);
+
+                server_app.update();
+
+                let mut client_app = App::new();
+                client_app.add_plugins(ClientNetworkingPlugin::new(0));
+                client_app.init_resource::<ClientMessages>();
+                register_many_bundles(&mut client_app);
+                init_app(&mut client_app);
+
+                copy_messages(&mut server_app, &mut client_app);
+                let mut update_messages = (*client_app.world.resource::<ClientMessages>()).clone();
+                for msg in update_messages.input.iter_mut() {
+                    msg[4] = 1;
+                }
+
+                client_app.update();
+                assert_eq!(client_app.world.entities().len(), ENTITIES);
+
+                client_app.insert_resource(update_messages);
+
+                let instant = Instant::now();
+                client_app.update();
+                elapsed += instant.elapsed();
+
+                let number_id = client_app.world.component_id::<Number>().unwrap();
+                let update_id = client_app.world.component_id::<LastUpdate<()>>().unwrap();
+                for arch in client_app.world.archetypes().iter() {
+                    if arch.contains(number_id) {
+                        assert!(arch.contains(update_id));
+                        for e in arch.entities() {
+                            let update = unsafe {
+                                client_app
+                                    .world
+                                    .get_by_id(e.entity(), update_id)
+                                    .unwrap()
+                                    .deref::<LastUpdate<()>>()
+                            };
+                            assert_eq!(**update, Tick(1));
+                        }
+                        break;
+                    }
+                }
             }
 
             elapsed
