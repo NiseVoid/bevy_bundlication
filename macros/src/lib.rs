@@ -191,7 +191,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                     <#networked_as as #import_path::NetworkedWrapper<#field_type>>::write_data(&#var, &mut buffer, tick, id_map).unwrap()
                 });
                 new = quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(&mut buffer, tick, id_map).unwrap()
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(&mut buffer, tick, id_manager).unwrap()
                 };
             } else {
                 write_component.push(quote! {
@@ -201,7 +201,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 });
                 new = quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::read_new(&mut buffer, tick, id_map)
+                        ::read_new(&mut buffer, tick, id_manager)
                         .unwrap()
                 };
             }
@@ -213,12 +213,12 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             } else if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 update_component.push(quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, &mut buffer, tick, id_map).unwrap()
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, &mut buffer, tick, id_manager).unwrap()
                 });
             } else {
                 update_component.push(quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::read_in_place(#var, &mut buffer, tick, id_map)
+                        ::read_in_place(#var, &mut buffer, tick, id_manager)
                         .unwrap()
                 });
             }
@@ -276,7 +276,8 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 }, buffer);
             }
 
-            fn consume(id_map: &mut #import_path::IdentifierMap, tick: #import_path::Tick, mut buffer: &mut std::io::Cursor<&[u8]>) {
+            fn consume(tick: #import_path::Tick, mut buffer: &mut std::io::Cursor<&[u8]>) {
+                let mut id_manager = &mut IdentifierManager::Ignore;
                 #(
                     _ = #new_component;
                 )*
@@ -284,7 +285,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 
             fn spawn(
                 entity: &mut bevy::ecs::world::EntityWorldMut,
-                id_map: &mut #import_path::IdentifierMap,
+                id_manager: &mut #import_path::IdentifierManager,
                 ident: #import_path::Identity,
                 tick: #import_path::Tick,
                 mut buffer: &mut std::io::Cursor<&[u8]>
@@ -302,21 +303,21 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 
             fn apply_changes(
                 entity: &mut bevy::ecs::world::EntityWorldMut,
-                id_map: &mut #import_path::IdentifierMap,
+                id_manager: &mut #import_path::IdentifierManager,
                 ident: #import_path::Identity,
                 tick: #import_path::Tick,
                 mut buffer: &mut std::io::Cursor<&[u8]>
             ) {
                 let bundle_tick = entity.get::<#import_path::LastUpdate<Self>>().map(|t| **t).unwrap_or_default();
                 if bundle_tick >= tick {
-                    Self::consume(id_map, tick, buffer);
+                    Self::consume(tick, buffer);
                     return;
                 }
 
                 let auth = entity.get::<#import_path::Authority>().map(|a| *a).unwrap_or_default();
                 if let #import_path::Identity::Client(client_id) = ident {
                     if !auth.can_claim(client_id) {
-                        Self::consume(id_map, tick, buffer);
+                        Self::consume(tick, buffer);
                         return;
                     }
                     entity.insert(#import_path::Authority::Client(client_id));

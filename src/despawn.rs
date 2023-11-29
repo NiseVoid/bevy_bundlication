@@ -61,7 +61,6 @@ pub(crate) fn handle_despawns(
     let Ok(EntityStatus::Alive(entity)) = map.get(&identifier, tick) else {
         return;
     };
-    let entity = *entity;
     if let Identity::Client(client_id) = ident {
         if !world
             .entity(entity)

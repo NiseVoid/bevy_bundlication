@@ -28,7 +28,7 @@ impl NetworkedEvent for BroadcastEvent {
 
     fn from_networked(
         _: Tick,
-        map: &mut IdentifierMap,
+        map: &mut IdentifierManager,
         networked: Self::As,
     ) -> IdentifierResult<Self> {
         let about = map.get_alive(&networked.about)?;
@@ -58,7 +58,7 @@ impl NetworkedEvent for TargetedEvent {
 
     fn from_networked(
         _: Tick,
-        map: &mut IdentifierMap,
+        map: &mut IdentifierManager,
         networked: Self::As,
     ) -> IdentifierResult<Self> {
         let about = map.get_alive(&networked.about)?;
@@ -228,13 +228,21 @@ fn test_receive_events() {
         .resource_mut::<Events<NetworkEvent<BroadcastEvent>>>()
         .drain()
         .collect();
-    assert_eq!(events.len(), 1);
+    assert_eq!(events.len(), 2);
     assert!(events.contains(&NetworkEvent {
         tick: Tick(7),
         sender: Identity::Client(1),
         event: BroadcastEvent {
             about: e1,
             value: 12
+        },
+    }));
+    assert!(events.contains(&NetworkEvent {
+        tick: Tick(7),
+        sender: Identity::Client(1),
+        event: BroadcastEvent {
+            about: app.world.resource::<IdentifierMap>().get_client(3).unwrap(),
+            value: 13
         },
     }));
 }
