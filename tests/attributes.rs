@@ -1,5 +1,6 @@
 use bevy_bundlication::prelude::*;
-use SendRule::*;
+
+use std::io::{Read, Write};
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
@@ -11,16 +12,27 @@ pub struct Marker;
 pub struct Position(u8, u8, u8);
 
 impl NetworkedWrapper<Transform> for Position {
-    fn from_component(_: Tick, _: &IdentifierMap, from: &Transform) -> IdentifierResult<Self> {
-        Ok(Self(
-            from.translation.x as u8,
-            from.translation.y as u8,
-            from.translation.z as u8,
-        ))
+    fn write_data(
+        from: &Transform,
+        w: impl Write,
+        _: Tick,
+        _: &IdentifierMap,
+    ) -> IdentifierResult<()> {
+        serialize(
+            w,
+            &Self(
+                from.translation.x as u8,
+                from.translation.y as u8,
+                from.translation.z as u8,
+            ),
+        )
+        .unwrap();
+        Ok(())
     }
-    fn to_component(self, _: Tick, _: &IdentifierMap) -> IdentifierResult<Transform> {
+    fn read_new(r: impl Read, _: Tick, _: &IdentifierMap) -> IdentifierResult<Transform> {
+        let pos: Self = deserialize(r).unwrap();
         Ok(Transform {
-            translation: Vec3::new(self.0 as f32, self.1 as f32, self.2 as f32),
+            translation: Vec3::new(pos.0 as f32, pos.1 as f32, pos.2 as f32),
             ..default()
         })
     }
@@ -69,6 +81,7 @@ fn test_attributes() {
             CanBeMissing,
         ),
     );
+    app.world.send_event(NewConnection(Identity::Client(1)));
 
     app.update();
 
@@ -76,11 +89,11 @@ fn test_attributes() {
     assert_eq!(msgs.output.len(), 1);
     assert!(msgs.output.contains(&(
         0,
-        All,
+        Identity::Client(1),
         vec![
             0, 0, 0, 0, // Tick
-            1, 0, 1, 0, 0, 0, 1, 2, 3, // 1
-            1, 0, 2, 0, 0, 0, 6, 5, 4, // 2
+            1, 0, 1, 0, 0, 0, 1, 1, 2, 3, 0, // 1
+            1, 0, 2, 0, 0, 0, 1, 6, 5, 4, 0, // 2
         ]
     )));
     msgs.output.clear();

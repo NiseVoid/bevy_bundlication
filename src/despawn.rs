@@ -1,6 +1,7 @@
 use crate::{
+    buffer::{RecipientData, WriteBuffer},
     client_authority::{HeldAuthority, Identity},
-    Authority, BufferKey, Buffers, EntityStatus, Identifier, IdentifierMap, LastUpdate, SendRule,
+    Authority, Buffers, Connections, EntityStatus, Identifier, IdentifierMap, LastUpdate, SendRule,
     Tick,
 };
 
@@ -10,13 +11,15 @@ use bevy::{ecs::system::Command, prelude::*};
 #[derive(Resource, Deref)]
 pub struct DespawnChannel(pub u8);
 
-pub fn send_despawns(
+pub(crate) fn send_despawns(
     mut removed: RemovedComponents<Identifier>,
     mut map: ResMut<IdentifierMap>,
     mut buffers: ResMut<Buffers>,
+    connections: Res<Connections>,
     held: Res<HeldAuthority>,
     our_ident: Res<Identity>,
     tick: Res<Tick>,
+    mut buf: ResMut<WriteBuffer>,
     despawn_channel: Res<DespawnChannel>,
 ) {
     for entity in removed.read() {
@@ -26,14 +29,25 @@ pub fn send_despawns(
         if *our_ident != Identity::Server && !held.contains(&entity) {
             continue;
         }
-        let mut buf =
-            buffers.reserve_mut(BufferKey::new(**despawn_channel, SendRule::All), 6, *tick);
+
+        let mut buffer = buffers.take(
+            *tick,
+            **despawn_channel,
+            bevy::ecs::component::Tick::new(0),
+            connections
+                .iter()
+                .map(|i| (i.ident, RecipientData::default())),
+        );
+
         buf.push(0);
-        bincode::serialize_into(&mut buf, &ident).unwrap();
+        bincode::serialize_into(&mut *buf, &ident).unwrap();
+
+        buffer.send(SendRule::All, &mut buf);
+        buffer.fragment();
     }
 }
 
-pub fn handle_despawns(
+pub(crate) fn handle_despawns(
     world: &mut World,
     ident: Identity,
     tick: Tick,

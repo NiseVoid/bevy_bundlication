@@ -76,6 +76,7 @@ const ENTITIES: u32 = 1000;
 
 fn init_app(app: &mut App) {
     app.register_bundle::<ServerToAll, PlayerBundle, 0>();
+    app.world.send_event(NewConnection(Identity::Client(1)));
 
     #[allow(clippy::unnecessary_to_owned)]
     for label in app
@@ -231,7 +232,7 @@ fn replication(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("many overlapping bundles", |b| {
+    c.bench_function("send overlapping bundles", |b| {
         b.iter_custom(|iter| {
             let mut elapsed = Duration::ZERO;
             for _ in 0..iter {
@@ -255,6 +256,39 @@ fn replication(c: &mut Criterion) {
 
                 copy_messages(&mut server_app, &mut client_app);
                 client_app.update();
+                assert_eq!(client_app.world.entities().len(), ENTITIES);
+            }
+
+            elapsed
+        })
+    });
+
+    c.bench_function("receive overlapping bundles", |b| {
+        b.iter_custom(|iter| {
+            let mut elapsed = Duration::ZERO;
+            for _ in 0..iter {
+                let mut server_app = App::new();
+                server_app.add_plugins(ServerNetworkingPlugin::new(0));
+                server_app.init_resource::<ServerMessages>();
+
+                register_many_bundles(&mut server_app);
+                init_app(&mut server_app);
+                spawn_numbers(&mut server_app);
+
+                server_app.update();
+
+                let mut client_app = App::new();
+                client_app.add_plugins(ClientNetworkingPlugin::new(0));
+                client_app.init_resource::<ClientMessages>();
+                register_many_bundles(&mut client_app);
+                init_app(&mut client_app);
+
+                copy_messages(&mut server_app, &mut client_app);
+
+                let instant = Instant::now();
+                client_app.update();
+                elapsed += instant.elapsed();
+
                 assert_eq!(client_app.world.entities().len(), ENTITIES);
             }
 

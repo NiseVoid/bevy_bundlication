@@ -1,10 +1,11 @@
 use bevy_bundlication::prelude::*;
-use SendRule::*;
+
+use std::io::{Read, Write};
 
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
 
-#[derive(Component, Serialize, Deserialize, Default, Clone, Debug)]
+#[derive(Component, Serialize, Deserialize, Default, Debug)]
 struct Coordinates {
     x: u8,
     y: u8,
@@ -17,14 +18,14 @@ struct Hp(i64);
 struct HpSerialized(u16);
 
 impl NetworkedComponent for Hp {
-    type As = HpSerialized;
-
-    fn to_networked(&self, _: Tick, _: &IdentifierMap) -> IdentifierResult<Self::As> {
-        Ok(HpSerialized(self.0.max(0) as u16))
+    fn write_data(&self, w: impl Write, _: Tick, _: &IdentifierMap) -> IdentifierResult<()> {
+        serialize(w, &HpSerialized(self.0.max(0) as u16)).unwrap();
+        Ok(())
     }
 
-    fn from_networked(_: Tick, _: &IdentifierMap, networked: Self::As) -> IdentifierResult<Self> {
-        Ok(Self(networked.0 as i64))
+    fn read_new(r: impl Read, _: Tick, _: &mut IdentifierMap) -> IdentifierResult<Self> {
+        let hp: HpSerialized = deserialize(r).unwrap();
+        Ok(Self(hp.0 as i64))
     }
 }
 
@@ -78,30 +79,59 @@ fn test_overlapping_bundles() {
             },),
         )
         .id();
+    app.world.send_event(NewConnection(Identity::Client(1)));
+    app.world.send_event(NewConnection(Identity::Client(7)));
 
     app.register_bundle::<ServerToOwner, Test2Bundle, 0>();
     app.register_bundle::<ServerToObserver, Test1Bundle, 0>();
     app.update();
 
     let mut msgs = app.world.resource_mut::<ServerMessages>();
-    assert_eq!(msgs.output.len(), 5);
-    assert!(msgs
-        .output
-        .contains(&(0, Except(1), vec![0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 5, 10])));
-    assert!(msgs
-        .output
-        .contains(&(0, All, vec![0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 3, 2])));
-    assert!(msgs
-        .output
-        .contains(&(0, Except(7), vec![0, 0, 0, 0, 1, 0, 7, 0, 0, 0, 2, 90])));
+    assert_eq!(msgs.output.len(), 2);
     assert!(msgs.output.contains(&(
         0,
-        Only(1),
-        vec![0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 5, 10, 184, 11]
+        Identity::Client(1),
+        vec![
+            0, 0, 0, 0, // Tick
+            1, // Entity message
+            0, 1, 0, 0, 0, // Identifier
+            2, // Bundle
+            5, 10, 184, 11, // Data
+            0,  // End of Entity
+            1,  // Entity message
+            1, 1, 0, 0, 0, // Identifier
+            1, // Bundle
+            3, 2, // Data
+            0, // End of Entity
+            1, // Entity message
+            0, 7, 0, 0, 0, // Identifier
+            1, // Bundle
+            2, 90, // Data
+            0,  // End of Entity
+        ]
     )));
-    assert!(msgs
-        .output
-        .contains(&(0, Only(7), vec![0, 0, 0, 0, 2, 0, 7, 0, 0, 0, 2, 90, 0, 0])));
+    assert!(msgs.output.contains(&(
+        0,
+        Identity::Client(7),
+        vec![
+            0, 0, 0, 0, // Tick
+            1, // Entity message
+            0, 1, 0, 0, 0, // Identifier
+            1, // Bundle
+            5, 10, //Data
+            0,  // End of Entity
+            1,  // Entity message
+            1, 1, 0, 0, 0, // Identifier
+            1, // Bundle
+            3, 2, // Data
+            0, // End of Entity
+            1, // Entity message
+            0, 7, 0, 0, 0, // Identifier
+            2, // Bundle
+            2, 90, 0, 0, // Data
+            0, // End of Entity
+        ]
+    )));
     msgs.output.clear();
 
     // Edit the HP of Player 7, should create a message for player 7 with coordinates and HP
@@ -114,9 +144,18 @@ fn test_overlapping_bundles() {
 
     let mut msgs = app.world.resource_mut::<ServerMessages>();
     assert_eq!(msgs.output.len(), 1);
-    assert!(msgs
-        .output
-        .contains(&(0, Only(7), vec![1, 0, 0, 0, 2, 0, 7, 0, 0, 0, 2, 90, 5, 0])));
+    assert!(msgs.output.contains(&(
+        0,
+        Identity::Client(7),
+        vec![
+            1, 0, 0, 0, // Tick
+            1, // Entity message
+            0, 7, 0, 0, 0, // Identifier
+            2, // Packet
+            2, 90, 5, 0, // Data
+            0, // End of Entity
+        ]
+    )));
     msgs.output.clear();
 
     // Edit the Coordinates of Player 1, should create a message for player 1 with coordinates
@@ -129,14 +168,29 @@ fn test_overlapping_bundles() {
     app.update();
 
     let mut msgs = app.world.resource_mut::<ServerMessages>();
-    assert_eq!(msgs.output.len(), 2);
-    assert!(msgs
-        .output
-        .contains(&(0, Except(1), vec![2, 0, 0, 0, 1, 0, 1, 0, 0, 0, 12, 10])));
     assert!(msgs.output.contains(&(
         0,
-        Only(1),
-        vec![2, 0, 0, 0, 2, 0, 1, 0, 0, 0, 12, 10, 184, 11]
+        Identity::Client(1),
+        vec![
+            2, 0, 0, 0, // Tick
+            1, // Entity message
+            0, 1, 0, 0, 0, // Identifier
+            2, // Packet
+            12, 10, 184, 11, // Data
+            0,  // End of Entity
+        ]
+    )));
+    assert!(msgs.output.contains(&(
+        0,
+        Identity::Client(7),
+        vec![
+            2, 0, 0, 0, // Tick
+            1, // Entity message
+            0, 1, 0, 0, 0, // Identifier
+            1, // Packet
+            12, 10, // Data
+            0,  // End of Entity
+        ]
     )));
     msgs.output.clear();
 
@@ -161,9 +215,20 @@ fn test_overlapping_bundles() {
     app.update();
 
     let mut msgs = app.world.resource_mut::<ServerMessages>();
-    assert_eq!(msgs.output.len(), 1);
-    assert!(msgs
-        .output
-        .contains(&(0, All, vec![4, 0, 0, 0, 1, 1, 1, 0, 0, 0, 3, 8])));
+    assert_eq!(msgs.output.len(), 2);
+    for client in [1, 7] {
+        assert!(msgs.output.contains(&(
+            0,
+            Identity::Client(client),
+            vec![
+                4, 0, 0, 0, // Tick
+                1, // Entity message
+                1, 1, 0, 0, 0, // Identifier
+                1, // Packet
+                3, 8, // Data
+                0, // End of Entity
+            ]
+        )));
+    }
     msgs.output.clear();
 }

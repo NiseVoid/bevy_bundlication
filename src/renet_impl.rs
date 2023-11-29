@@ -2,7 +2,7 @@ use crate::*;
 
 use bevy::prelude::resource_exists;
 use bevy_renet::{
-    renet::{Bytes, ClientId, RenetClient, RenetServer},
+    renet::{Bytes, ClientId, RenetClient, RenetServer, ServerEvent},
     {RenetReceive, RenetSend},
 };
 
@@ -31,8 +31,24 @@ impl Plugin for BundlicationRenetServerPlugin {
         )
         .add_systems(
             PostUpdate,
-            send_buffers::<ServerToClient, RenetServer>.in_set(InternalSet::SendBuffers),
+            (
+                read_disconnects.before(update_connections),
+                send_buffers::<ServerToClient, RenetServer>.in_set(InternalSet::SendBuffers),
+            ),
         );
+    }
+}
+
+fn read_disconnects(
+    mut renet_events: EventReader<ServerEvent>,
+    mut events: EventWriter<RemoveConnection>,
+) {
+    for event in renet_events.read() {
+        let ServerEvent::ClientDisconnected { client_id, .. } = event else {
+            continue;
+        };
+
+        events.send(RemoveConnection(Identity::Client(client_id.raw() as u32)));
     }
 }
 
@@ -80,7 +96,7 @@ impl<Dir: Direction> NetImpl<Dir> for RenetClient {
         }
     }
 
-    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
+    fn send_messages(&mut self, msgs: impl Iterator<Item = (BufferKey, Vec<u8>)>) {
         for (BufferKey { channel, rule: _ }, buf) in msgs {
             self.send_message(channel, buf);
         }
@@ -103,7 +119,7 @@ impl<Dir: Direction> NetImpl<Dir> for RenetServer {
         }
     }
 
-    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
+    fn send_messages(&mut self, msgs: impl Iterator<Item = (BufferKey, Vec<u8>)>) {
         for (BufferKey { channel, rule }, buf) in msgs {
             match rule {
                 SendRule::All => {

@@ -161,9 +161,8 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
     let mut component_type = Vec::new();
     let mut spawn_only_type = Vec::new();
     let mut component_var = Vec::new();
-    let mut network_type = Vec::new();
-    let mut to_networked = Vec::new();
-    let mut from_networked = Vec::new();
+    let mut write_component = Vec::new();
+    let mut new_component = Vec::new();
     let mut update_component = Vec::new();
     let mut filters = Vec::new();
 
@@ -185,38 +184,45 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 #field_type
             });
 
+            let new;
             if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
-                network_type.push(quote! {
-                    #networked_as
+                write_component.push(quote! {
+                    #networked_as::write_data(&#var, &mut buffer, tick, id_map).unwrap()
                 });
-                to_networked.push(quote! {
-                    #networked_as::from_component(tick, map, #var)
-                });
-                from_networked.push(quote! {
-                    comp.to_component(tick, map)
-                });
+                new = quote! {
+                    #networked_as::read_new(&mut buffer, tick, id_map).unwrap()
+                };
             } else {
-                network_type.push(quote! {
-                    <#field_type as #import_path::NetworkedComponent>::As
+                write_component.push(quote! {
+                    <#field_type as #import_path::NetworkedComponent>
+                        ::write_data(&#var, &mut buffer, tick, id_map)
+                        .unwrap()
                 });
-                to_networked.push(quote! {
-                    <#field_type as #import_path::NetworkedComponent>::to_networked(#var, tick, map)
-                });
-                from_networked.push(quote! {
-                    <#field_type as #import_path::NetworkedComponent>::from_networked(tick, map, comp)
-                });
+                new = quote! {
+                    <#field_type as #import_path::NetworkedComponent>
+                        ::read_new(&mut buffer, tick, id_map)
+                        .unwrap()
+                };
             }
 
             if let Some(ref update_with) = field_info.update_with {
                 update_component.push(quote! {
-                    #update_with(&mut c, #var);
+                    #update_with(&mut #var, #new);
+                });
+            } else if let Some(ref networked_as) = field_info.networked_as {
+                let networked_as = networked_as.clone();
+                update_component.push(quote! {
+                    #networked_as::read_in_place(&mut #var, &mut buffer, tick, id_map).unwrap()
                 });
             } else {
                 update_component.push(quote! {
-                    *c = #var;
+                    <#field_type as #import_path::NetworkedComponent>
+                        ::read_in_place(&mut #var, &mut buffer, tick, id_map)
+                        .unwrap()
                 });
             }
+            new_component.push(new);
         } else {
             spawn_only_type.push(quote! {
                 #field_type
@@ -239,118 +245,115 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         #[allow(clippy::too_many_arguments, clippy::type_complexity)]
         impl #impl_generics #struct_name #ty_generics #where_clause {
-            #[inline(always)]
-            fn send(buffers: &mut #import_path::Buffers, packet_id: u8, tick: #import_path::Tick, channel: u8, rule: #import_path::SendRule, map: &#import_path::IdentifierMap, identifier: #import_path::Identifier, #(#component_var: &#component_type, )*) {
-                #(
-                    let Ok(#component_var) = #to_networked else {return;};
-                )*
-
-                let packet_size = 1 +
-                    #(#import_path::bincode::serialized_size(&#component_var).unwrap() +)*
-                    #import_path::bincode::serialized_size(&identifier).unwrap();
-
-                let mut buf = buffers.reserve_mut(#import_path::BufferKey::new(channel, rule), packet_size as usize, tick);
-
-                buf.push(packet_id);
-                #import_path::bincode::serialize_into(&mut buf, &identifier).unwrap();
-                #(
-                    #import_path::bincode::serialize_into(&mut buf, &#component_var).unwrap();
-                )*
-            }
-
             fn send_changes<const CHANNEL: u8, Method: #import_path::SendMethod>(
                 id: #import_path::Identifier,
                 owner: Option<&#import_path::Owner>,
                 authority: Option<&#import_path::Authority>,
                 entity: &bevy::ecs::world::EntityRef,
 
+                our_identity: #import_path::Identity,
+
                 packet_id: u8,
 
-                buffers: &mut #import_path::Buffers,
-                map: &#import_path::IdentifierMap,
-
+                buffers: &mut #import_path::TakenBuffers,
+                mut buffer: &mut #import_path::WriteBuffer,
+                id_map: &#import_path::IdentifierMap,
                 tick: #import_path::Tick,
-                our_identity: #import_path::Identity,
-                new_clients: &[u32],
+                last_run: bevy::ecs::component::Tick,
+                this_run: bevy::ecs::component::Tick,
             ) {
                 let Some(mut rule) = Method::should_send(our_identity, authority, owner, id) else {return;};
                 #( let #component_var = entity.get_ref::<#component_type>().unwrap(); )*
 
-                let mut changed = #( #component_var.is_changed() || )* false;
-
-                if !changed {
-                    let Some(new_rule) = rule.filter_to(new_clients) else {return;};
-                    rule = new_rule;
-                }
-
-                Self::send(buffers, packet_id, tick, CHANNEL, rule, &map, id, #(&*#component_var, )*);
-            }
-
-            fn apply_changes(world: &mut World, ident: #import_path::Identity, tick: #import_path::Tick, mut cursor: &mut std::io::Cursor<&[u8]>) {
-                let Ok(identifier) = #import_path::bincode::deserialize_from(&mut cursor) else {return;};
-                let map = world.resource::<#import_path::IdentifierMap>();
-                let entity = match map.get(&identifier, tick) {
-                    Ok(#import_path::EntityStatus::Alive(entity)) => Some(*entity),
-                    Ok(#import_path::EntityStatus::Despawned(_)) => {return;},
-                    Err(e) => {None},
-                };
-
+                let mut changed = last_run;
                 #(
-                    let Ok(comp) = #import_path::bincode::deserialize_from::<_, #network_type>(&mut cursor) else {return;};
-                    let Ok(#component_var): #import_path::IdentifierResult<#component_type> = #from_networked else {return;};
+                    let c = #component_var.last_changed();
+                    if c.is_newer_than(changed, this_run) {
+                        changed = c;
+                    }
                 )*
 
-                if let Some(mut entity) = entity.and_then(|entity| world.get_entity_mut(entity)) {
-                    let bundle_tick = entity.get::<#import_path::LastUpdate<Self>>().map(|t| **t).unwrap_or_default();
-                    if bundle_tick >= tick {
+                buffer.push(packet_id);
+                #( #write_component; )*
+                buffers.send_filtered(#import_path::WriteFilters {
+                    rule,
+                    changed,
+                }, buffer);
+            }
+
+            fn consume(id_map: &mut #import_path::IdentifierMap, tick: #import_path::Tick, mut buffer: &mut std::io::Cursor<&[u8]>) {
+                #(
+                    _ = #new_component;
+                )*
+            }
+
+            fn spawn(
+                entity: &mut bevy::ecs::world::EntityWorldMut,
+                id_map: &mut #import_path::IdentifierMap,
+                ident: #import_path::Identity,
+                tick: #import_path::Tick,
+                mut buffer: &mut std::io::Cursor<&[u8]>
+            ) {
+                entity.insert((
+                    #import_path::LastUpdate::<Self>::new(tick),
+                    #(
+                        #new_component,
+                    )*
+                    #(
+                        #spawn_only_type::default(),
+                    )*
+                ));
+            }
+
+            fn apply_changes(
+                entity: &mut bevy::ecs::world::EntityWorldMut,
+                id_map: &mut #import_path::IdentifierMap,
+                ident: #import_path::Identity,
+                tick: #import_path::Tick,
+                mut buffer: &mut std::io::Cursor<&[u8]>
+            ) {
+                let bundle_tick = entity.get::<#import_path::LastUpdate<Self>>().map(|t| **t).unwrap_or_default();
+                if bundle_tick >= tick {
+                    Self::consume(id_map, tick, buffer);
+                    return;
+                }
+
+                let auth = entity.get::<#import_path::Authority>().map(|a| *a).unwrap_or_default();
+                if let #import_path::Identity::Client(client_id) = ident {
+                    if !auth.can_claim(client_id) {
+                        Self::consume(id_map, tick, buffer);
                         return;
                     }
+                    entity.insert(#import_path::Authority::Client(client_id));
+                }
+                entity.insert(#import_path::LastUpdate::<Self>::new(tick));
+                let entity_tick = entity.get::<#import_path::LastUpdate<()>>().map(|t| **t).unwrap_or_default();
+                if tick > entity_tick {
+                    entity.insert(#import_path::LastUpdate::<()>::new(tick));
+                }
 
-                    let auth = entity.get::<#import_path::Authority>().map(|a| *a).unwrap_or_default();
-                    if let #import_path::Identity::Client(client_id) = ident {
-                        if !auth.can_claim(client_id) {
-                            return;
-                        }
-                        entity.insert(#import_path::Authority::Client(client_id));
-                    }
-                    entity.insert(#import_path::LastUpdate::<Self>::new(tick));
-                    let entity_tick = entity.get::<#import_path::LastUpdate<()>>().map(|t| **t).unwrap_or_default();
-                    if tick > entity_tick {
-                        entity.insert(#import_path::LastUpdate::<()>::new(tick));
-                    }
-
-                    #(
-                        match entity.get_mut::<#import_path::Remote<#component_type>>() {
-                            Some(mut remote) => {remote.update(#component_var, tick)},
-                            None => {
-                                match entity.get_mut::<#component_type>() {
-                                    Some(mut c) => {#update_component}
-                                    None => {entity.insert(#component_var);}
+                #(
+                    match entity.get_mut::<#import_path::Remote<#component_type>>() {
+                        Some(mut remote) => {
+                            let mut #component_var = remote.update(tick);
+                            #update_component;
+                        },
+                        None => {
+                            match entity.get_mut::<#component_type>() {
+                                Some(mut #component_var) => {#update_component}
+                                None => {
+                                    entity.insert(#new_component);
                                 }
                             }
                         }
-                    )*
-                    #(
-                        match entity.get::<#spawn_only_type>() {
-                            Some(_) => {}
-                            None => {entity.insert(#spawn_only_type::default());}
-                        }
-                    )*
-                } else if ident == #import_path::Identity::Server {
-                    let entity = world.spawn((
-                        identifier,
-                        #import_path::LastUpdate::<Self>::new(tick),
-                        #import_path::LastUpdate::<()>::new(tick),
-                        #(
-                            #component_var,
-                        )*
-                        #(
-                            #spawn_only_type::default(),
-                        )*
-                    )).id();
-                    let mut map = world.resource_mut::<#import_path::IdentifierMap>();
-                    map.insert(identifier, entity);
-                }
+                    }
+                )*
+                #(
+                    match entity.get::<#spawn_only_type>() {
+                        Some(_) => {}
+                        None => {entity.insert(#spawn_only_type::default());}
+                    }
+                )*
             }
         }
 
@@ -366,8 +369,16 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 Self::send_changes::<CHANNEL, Method>
             }
 
-            fn handler() -> #import_path::ApplyChangeFn {
+            fn updater() -> #import_path::ApplyEntityChangeFn {
                 Self::apply_changes
+            }
+
+            fn spawner() -> #import_path::ApplyEntityChangeFn {
+                Self::spawn
+            }
+
+            fn consumer() -> #import_path::ConsumeFn {
+                Self::consume
             }
         }
     })

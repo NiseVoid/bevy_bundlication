@@ -29,8 +29,8 @@ fn test_remote_components() {
 
     msgs.input.push(vec![
         1, 0, 0, 0, // Tick
-        1, 0, 1, 0, 0, 0, 12, // 1
-        1, 0, 2, 0, 0, 0, 13, // 2
+        1, 0, 1, 0, 0, 0, 1, 12, 0, // 1
+        1, 0, 2, 0, 0, 0, 1, 13, 0, // 2
     ]);
 
     app.insert_resource(msgs);

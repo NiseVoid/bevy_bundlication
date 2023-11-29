@@ -42,22 +42,19 @@ fn test_new_client() {
     let msgs = app.world.resource::<ServerMessages>();
     // Now we expect the changed entity to get broadcast, while the new clients also gets updated
     // about the other two entities
-    assert_eq!(msgs.output.len(), 2);
+    assert_eq!(msgs.output.len(), 1);
     assert!(msgs.output.contains(&(
-        1,
-        SendRule::All,
+        0,
+        Identity::Client(13),
         vec![
             2, 0, 0, 0, //Tick
-            1, 0, 1, 0, 0, 0, 3, //1
-        ]
-    ),));
-    assert!(msgs.output.contains(&(
-        1,
-        SendRule::List(vec![13]),
-        vec![
-            2, 0, 0, 0, //Tick
-            1, 1, 1, 0, 0, 0, 5, // 2
-            1, 1, 2, 0, 0, 0, 7, // 3
+            1, // Entity
+            0, 1, 0, 0, 0, 1, 3, // 1
+            0, 1, // end, entity
+            1, 1, 0, 0, 0, 1, 5, // 2
+            0, 1, // end, entity
+            1, 2, 0, 0, 0, 1, 7, // 3
+            0, // end
         ]
     ),));
 }

@@ -31,12 +31,18 @@ impl Authority {
 
 /// The identity of a connection
 #[repr(u8)]
-#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Resource, Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum Identity {
     /// The identity is the server
     Server,
     /// The identity is a client with the specified id
     Client(u32),
+}
+
+impl From<&Identity> for Identity {
+    fn from(value: &Identity) -> Self {
+        *value
+    }
 }
 
 impl Identity {

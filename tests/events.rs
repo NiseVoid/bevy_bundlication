@@ -1,5 +1,4 @@
 use bevy_bundlication::prelude::*;
-use SendRule::*;
 
 use bevy::{ecs::system::Command, prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
@@ -19,19 +18,23 @@ pub struct NetworkedTestEvent {
 impl NetworkedEvent for BroadcastEvent {
     type As = NetworkedTestEvent;
 
-    fn from_networked(_: Tick, map: &IdentifierMap, networked: Self::As) -> IdentifierResult<Self> {
-        let about = map.get_alive(&networked.about)?;
-        Ok(Self {
-            about,
-            value: networked.value as i32,
-        })
-    }
-
     fn to_networked(&self, _: Tick, map: &IdentifierMap) -> IdentifierResult<Self::As> {
         let about = map.from_entity(&self.about)?;
         Ok(Self::As {
             about,
             value: self.value.max(0) as u16,
+        })
+    }
+
+    fn from_networked(
+        _: Tick,
+        map: &mut IdentifierMap,
+        networked: Self::As,
+    ) -> IdentifierResult<Self> {
+        let about = map.get_alive(&networked.about)?;
+        Ok(Self {
+            about,
+            value: networked.value as i32,
         })
     }
 }
@@ -45,19 +48,23 @@ pub struct TargetedEvent {
 impl NetworkedEvent for TargetedEvent {
     type As = NetworkedTestEvent;
 
-    fn from_networked(_: Tick, map: &IdentifierMap, networked: Self::As) -> IdentifierResult<Self> {
-        let about = map.get_alive(&networked.about)?;
-        Ok(Self {
-            target: about,
-            value: networked.value as i32,
-        })
-    }
-
     fn to_networked(&self, _: Tick, map: &IdentifierMap) -> IdentifierResult<Self::As> {
         let about = map.from_entity(&self.target)?;
         Ok(Self::As {
             about,
             value: self.value.max(0) as u16,
+        })
+    }
+
+    fn from_networked(
+        _: Tick,
+        map: &mut IdentifierMap,
+        networked: Self::As,
+    ) -> IdentifierResult<Self> {
+        let about = map.get_alive(&networked.about)?;
+        Ok(Self {
+            target: about,
+            value: networked.value as i32,
         })
     }
 }
@@ -69,6 +76,8 @@ fn test_send_events() {
     app.init_resource::<ServerMessages>();
     app.register_event::<ServerToClient, TargetedEvent, 17>();
     app.register_event::<ServerToClient, BroadcastEvent, 23>();
+    app.world.send_event(NewConnection(Identity::Client(1)));
+    app.world.send_event(NewConnection(Identity::Client(2)));
 
     let e1 = app.world.spawn_client(1, ()).id();
     let e2 = app.world.spawn_client(2, ()).id();
@@ -116,35 +125,35 @@ fn test_send_events() {
     app.update();
 
     let mut msgs = app.world.resource_mut::<ServerMessages>();
-    assert_eq!(msgs.output.len(), 3);
-
-    println!("{:?}", msgs.output);
+    assert_eq!(msgs.output.len(), 4);
 
     assert!(msgs.output.contains(&(
         17,
-        Only(1),
+        Identity::Client(1),
         vec![
             1, 0, 0, 0, // Tick
-            2, 0, 1, 0, 0, 0, 10, 0, // Event 1
+            2, 2, 0, 1, 0, 0, 0, 10, 0, // Event 1
         ]
     )));
     assert!(msgs.output.contains(&(
         18,
-        Only(2),
+        Identity::Client(2),
         vec![
             1, 0, 0, 0, //Tick
-            2, 0, 2, 0, 0, 0, 11, 0, // Event 2
+            2, 2, 0, 2, 0, 0, 0, 11, 0, // Event 2
         ],
     )));
-    assert!(msgs.output.contains(&(
-        23,
-        All,
-        vec![
-            1, 0, 0, 0, // Tick
-            1, 0, 1, 0, 0, 0, 30, 0, // Event 4
-            1, 0, 1, 0, 0, 0, 31, 0, // Event 5
-        ]
-    )));
+    for client_id in [1, 2] {
+        assert!(msgs.output.contains(&(
+            23,
+            Identity::Client(client_id),
+            vec![
+                1, 0, 0, 0, // Tick
+                2, 1, 0, 1, 0, 0, 0, 30, 0, // Event 4
+                2, 1, 0, 1, 0, 0, 0, 31, 0, // Event 5
+            ]
+        )));
+    }
     msgs.output.clear();
 }
 
@@ -166,22 +175,22 @@ fn test_receive_events() {
         1,
         vec![
             2, 0, 0, 0, // Tick
-            2, 0, 2, 0, 0, 0, 10, 0, // Event 1
+            2, 2, 0, 2, 0, 0, 0, 10, 0, // Event 1
         ],
     ));
     msgs.input.push((
         2,
         vec![
             3, 0, 0, 0, //Tick
-            2, 0, 1, 0, 0, 0, 11, 0, // Event 2
+            2, 2, 0, 1, 0, 0, 0, 11, 0, // Event 2
         ],
     ));
     msgs.input.push((
         1,
         vec![
             7, 0, 0, 0, // Tick
-            1, 0, 1, 0, 0, 0, 12, 0, // Event 3
-            1, 0, 3, 0, 0, 0, 13, 0, // Event 4
+            2, 1, 0, 1, 0, 0, 0, 12, 0, // Event 3
+            2, 1, 0, 3, 0, 0, 0, 13, 0, // Event 4
         ],
     ));
     app.world.insert_resource(msgs);

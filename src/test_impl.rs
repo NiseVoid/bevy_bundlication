@@ -48,8 +48,8 @@ impl<Dir: Direction> NetImpl<Dir> for ClientMessages {
         }
     }
 
-    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
-        for (BufferKey { channel, rule: _ }, buf) in msgs {
+    fn send_messages(&mut self, msgs: impl Iterator<Item = (BufferKey, Vec<u8>)>) {
+        for (BufferKey { channel, .. }, buf) in msgs {
             self.output.push((channel, buf));
         }
     }
@@ -60,8 +60,8 @@ impl<Dir: Direction> NetImpl<Dir> for ClientMessages {
 pub struct ServerMessages {
     /// The input, a list of client id and bytes
     pub input: Vec<(u32, Vec<u8>)>,
-    /// The output, a list of channel, send rules and bytes
-    pub output: Vec<(u8, SendRule, Vec<u8>)>,
+    /// The output, a list of channels, [`Identity`]s and bytes
+    pub output: Vec<(u8, Identity, Vec<u8>)>,
 }
 
 impl<Dir: Direction> NetImpl<Dir> for ServerMessages {
@@ -71,9 +71,16 @@ impl<Dir: Direction> NetImpl<Dir> for ServerMessages {
         }
     }
 
-    fn send_messages(&mut self, msgs: std::vec::Drain<(BufferKey, Vec<u8>)>) {
-        for (BufferKey { channel, rule }, buf) in msgs {
-            self.output.push((channel, rule, buf));
+    fn send_messages(&mut self, msgs: impl Iterator<Item = (BufferKey, Vec<u8>)>) {
+        for (
+            BufferKey {
+                channel,
+                destination,
+            },
+            buf,
+        ) in msgs
+        {
+            self.output.push((channel, destination, buf));
         }
     }
 }

@@ -1,5 +1,7 @@
 use bevy_bundlication::prelude::*;
 
+use std::io::{Read, Write};
+
 use bevy::{prelude::*, reflect::TypePath};
 use serde::{Deserialize, Serialize};
 
@@ -10,16 +12,27 @@ pub struct Marker;
 pub struct Position(u8, u8, u8);
 
 impl NetworkedWrapper<Transform> for Position {
-    fn from_component(_: Tick, _: &IdentifierMap, from: &Transform) -> IdentifierResult<Self> {
-        Ok(Self(
-            from.translation.x as u8,
-            from.translation.y as u8,
-            from.translation.z as u8,
-        ))
+    fn write_data(
+        from: &Transform,
+        w: impl Write,
+        _: Tick,
+        _: &IdentifierMap,
+    ) -> IdentifierResult<()> {
+        serialize(
+            w,
+            &Self(
+                from.translation.x as u8,
+                from.translation.y as u8,
+                from.translation.z as u8,
+            ),
+        )
+        .unwrap();
+        Ok(())
     }
-    fn to_component(self, _: Tick, _: &IdentifierMap) -> IdentifierResult<Transform> {
+    fn read_new(r: impl Read, _: Tick, _: &IdentifierMap) -> IdentifierResult<Transform> {
+        let pos: Position = deserialize(r).unwrap();
         Ok(Transform {
-            translation: Vec3::new(self.0 as f32, self.1 as f32, self.2 as f32),
+            translation: Vec3::new(pos.0 as f32, pos.1 as f32, pos.2 as f32),
             ..default()
         })
     }
@@ -40,6 +53,7 @@ fn test_spawn() {
     app.insert_resource(Tick(1));
     app.init_resource::<ServerMessages>();
     app.register_bundle::<ServerToAll, SpawnTestBundle, 0>();
+    app.world.send_event(NewConnection(Identity::Client(1)));
 
     // This entity has the complete bundle
     app.world.spawn_client(

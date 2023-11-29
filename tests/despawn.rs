@@ -99,7 +99,7 @@ fn test_early_despawn() {
     msgs.input.extend_from_slice(&[
         vec![
             1, 0, 0, 0, // Tick
-            1, 0, 1, 0, 0, 0, 1, // update e1
+            1, 0, 1, 0, 0, 0, 1, 1, 0, // update e1
         ],
         vec![
             5, 0, 0, 0, // Tick
@@ -107,7 +107,7 @@ fn test_early_despawn() {
         ],
         vec![
             2, 0, 0, 0, // Tick
-            1, 0, 1, 0, 0, 0, 2, // update e1
+            1, 0, 1, 0, 0, 0, 1, 2, 0, // update e1
         ],
     ]);
     app.insert_resource(msgs);
@@ -132,7 +132,7 @@ fn test_late_despawn() {
     msgs.input.extend_from_slice(&[
         vec![
             27, 0, 0, 0, // Tick
-            1, 0, 1, 0, 0, 0, 2, // update e1
+            1, 0, 1, 0, 0, 0, 1, 2, 0, // update e1
         ],
         vec![
             5, 0, 0, 0, // Tick

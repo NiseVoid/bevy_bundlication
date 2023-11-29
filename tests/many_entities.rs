@@ -37,13 +37,15 @@ fn test_many_entities() {
     for i in 0..25000 {
         app.world.spawn_client(i, Number((i % 255) as u8));
     }
+    app.world.send_event(NewConnection(Identity::Client(0)));
 
     app.update();
 
     let mut msgs = app.world.remove_resource::<ServerMessages>().unwrap();
-    // We have 25k entities, each at 7 bytes (packet id (1), Identifier (5), Number (1))
-    // Packets can be at most 1200 bytes, that means we need over 146 packets
-    assert!(msgs.output.len() == 148);
+    // We have 25k entities, each at 9 bytes (packet type (1), Identifier (5), bundle id (1), Number (1), entity end (1))
+    // Packets can be at most 1200 bytes, that means we need over 188 packets
+    println!("{}", msgs.output.len());
+    assert!(msgs.output.len() == 204);
 
     let mut client_msgs = ClientMessages::default();
     for msg in msgs.output.drain(..) {

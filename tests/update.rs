@@ -32,8 +32,8 @@ fn test_update() {
 
     msgs.input.push(vec![
         1, 0, 0, 0, // Tick
-        1, 0, 1, 0, 0, 0, 5, // 1
-        1, 0, 2, 0, 0, 0, 5, // 2
+        1, 0, 1, 0, 0, 0, 1, 5, 0, // 1
+        1, 0, 2, 0, 0, 0, 1, 5, 0, // 2
     ]);
 
     app.insert_resource(msgs);

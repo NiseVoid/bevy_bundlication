@@ -35,8 +35,8 @@ impl<T: Component> Remote<T> {
 
     /// Update the value and tick for this remote value
     #[inline(always)]
-    pub fn update(&mut self, value: T, tick: Tick) {
-        self.value = value;
+    pub fn update(&mut self, tick: Tick) -> &mut T {
         self.tick = tick;
+        &mut self.value
     }
 }
