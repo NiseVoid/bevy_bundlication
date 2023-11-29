@@ -246,12 +246,9 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         #[allow(clippy::too_many_arguments, clippy::type_complexity)]
         impl #impl_generics #struct_name #ty_generics #where_clause {
             fn send_changes<const CHANNEL: u8, Method: #import_path::SendMethod>(
-                id: #import_path::Identifier,
-                owner: Option<&#import_path::Owner>,
-                authority: Option<&#import_path::Authority>,
-                entity: &bevy::ecs::world::EntityRef,
-
-                our_identity: #import_path::Identity,
+                ids: &[bevy::ecs::component::ComponentId],
+                owner: Option<u32>,
+                entity: bevy::ecs::world::EntityRef,
 
                 packet_id: u8,
 
@@ -259,22 +256,20 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 mut buffer: &mut #import_path::WriteBuffer,
                 id_map: &#import_path::IdentifierMap,
                 tick: #import_path::Tick,
-                last_run: bevy::ecs::component::Tick,
-                this_run: bevy::ecs::component::Tick,
+                changed: bevy::ecs::component::Tick,
             ) {
-                let Some(mut rule) = Method::should_send(our_identity, authority, owner, id) else {return;};
-                #( let #component_var = entity.get_ref::<#component_type>().unwrap(); )*
-
-                let mut changed = last_run;
-                #(
-                    let c = #component_var.last_changed();
-                    if c.is_newer_than(changed, this_run) {
-                        changed = c;
-                    }
-                )*
+                let Some(mut rule) = Method::rule(owner) else {return;};
 
                 buffer.push(packet_id);
-                #( #write_component; )*
+                let mut ids = ids.iter();
+                #({
+                    let #component_var = unsafe{
+                        entity.get_by_id(*ids.next().unwrap())
+                            .unwrap().deref()
+                    };
+                    #write_component;
+                })*
+
                 buffers.send_filtered(#import_path::WriteFilters {
                     rule,
                     changed,

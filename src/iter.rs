@@ -5,10 +5,7 @@ use super::{
 };
 
 use bevy::{
-    ecs::{
-        archetype::{ArchetypeGeneration, ArchetypeId, Archetypes},
-        component::ComponentId,
-    },
+    ecs::archetype::{ArchetypeGeneration, ArchetypeId, Archetypes},
     prelude::*,
 };
 
@@ -35,7 +32,7 @@ pub fn iterate_world<Dir: Direction>(world: &mut World) {
     let this_run = world.change_tick();
     let archetypes = world.archetypes();
 
-    update_archetype_cache::<Dir>(world, archetypes, cache.generation, &mut cache);
+    update_archetype_cache::<Dir>(ident, world, archetypes, cache.generation, &mut cache);
     cache.generation = archetypes.generation();
 
     let mut taken = buffers.take(
@@ -52,51 +49,68 @@ pub fn iterate_world<Dir: Direction>(world: &mut World) {
         }),
     );
 
-    for entry in cache.list.iter() {
+    for entry in cache.list.iter_mut() {
         let archetype = archetypes.get(entry.archetype).unwrap();
 
         for entity in archetype.entities().iter() {
             let entity = world.entity(entity.entity());
-            let id = entity.get::<Identifier>().unwrap();
-            let owner = match entry.has_owner {
-                true => entity.get::<Owner>(),
-                false => None,
-            };
-            let authority = match entry.has_authority {
-                true => entity.get::<Authority>(),
-                false => None,
-            };
+            if let Identity::Client(client_id) = ident {
+                if let Some(auth) = entity.get::<Authority>() {
+                    if !auth.can_claim(client_id) {
+                        continue;
+                    }
+                }
+            }
 
-            if !new_clients
-                && !entry.components.iter().any(|c| {
-                    entity
-                        .get_change_ticks_by_id(*c)
-                        .unwrap()
-                        .is_changed(last_run, this_run)
-                })
-            {
+            let mut changed = last_run;
+            for (bundle, last_changed) in entry.bundles.iter().zip(entry.last_changed.iter_mut()) {
+                *last_changed = last_run;
+                for &id in bundle.component_ids.iter() {
+                    let change = entity.get_change_ticks_by_id(id).unwrap();
+                    if change.is_changed(*last_changed, this_run) {
+                        *last_changed = change.last_changed_tick();
+                        if change.is_changed(changed, this_run) {
+                            changed = change.last_changed_tick();
+                        }
+                    }
+                }
+            }
+
+            if !new_clients && changed == last_run {
                 continue;
             }
+
+            let id = entity.get::<Identifier>().unwrap();
+            let owner = match entry.has_owner {
+                true => Some(**entity.get::<Owner>().unwrap()),
+                false => {
+                    if id.is_client() {
+                        Some(id.id)
+                    } else {
+                        None
+                    }
+                }
+            };
 
             taken.overhead(1 + 1 + 4 + 1);
             buf.push(Packet::ENTITY);
             buf.push(id.entity_type);
             buf.extend_from_slice(&id.id.to_le_bytes());
             taken.send(SendRule::All, &mut buf);
-            for bundle in entry.bundles.iter() {
+            for (bundle, &changed) in entry.bundles.iter().zip(entry.last_changed.iter()) {
+                if !new_clients && changed == last_run {
+                    continue;
+                }
                 (bundle.serialize)(
-                    *id,
+                    &bundle.component_ids,
                     owner,
-                    authority,
-                    &entity,
-                    ident,
+                    entity,
                     bundle.packet_id,
                     &mut taken,
                     &mut buf,
                     &id_map,
                     tick,
-                    last_run,
-                    this_run,
+                    changed,
                 );
             }
             buf.push(0);
@@ -133,43 +147,42 @@ impl Default for ArchetypeCache {
 pub struct ArchetypeCacheEntry {
     archetype: ArchetypeId,
     has_owner: bool,
-    has_authority: bool,
-    components: Vec<ComponentId>,
     bundles: Vec<RegisteredBundle>,
+    last_changed: Vec<bevy::ecs::component::Tick>,
 }
 
 fn update_archetype_cache<Dir: Direction>(
+    ident: Identity,
     world: &World,
     archetypes: &Archetypes,
     since: ArchetypeGeneration,
     cache: &mut ArchetypeCache,
 ) {
-    let Some(marker_id) = world.component_id::<Identifier>() else {
-        return;
-    };
-    let owner_id = world.component_id::<Owner>();
-    let authority_id = world.component_id::<Authority>();
+    let marker_id = world.component_id::<Identifier>().unwrap();
+    let owner_id = world.component_id::<Owner>().unwrap();
+    let authority_id = world.component_id::<Authority>().unwrap();
     let reg = world.resource::<RegistryDir<Dir>>();
 
     for archetype in &archetypes[since..] {
         if !archetype.contains(marker_id) {
             continue;
         }
+        if ident != Identity::Server && !archetype.contains(authority_id) {
+            // Client can't send bundles without authority so we can skip all of them
+            continue;
+        }
 
         let mut bundles = Vec::with_capacity(5);
-        let mut components = Vec::with_capacity(20);
+        let mut last_changed = Vec::with_capacity(5);
+
         'bundle_loop: for (_, bundle) in reg.bundles.iter() {
             for comp in bundle.component_ids.iter() {
                 if !archetype.contains(*comp) {
                     continue 'bundle_loop;
                 }
             }
-            for comp in bundle.component_ids.iter() {
-                if !components.contains(comp) {
-                    components.push(*comp);
-                }
-            }
             bundles.push(bundle.clone());
+            last_changed.push(bevy::ecs::component::Tick::new(0));
         }
 
         if bundles.is_empty() {
@@ -178,10 +191,9 @@ fn update_archetype_cache<Dir: Direction>(
 
         cache.list.push(ArchetypeCacheEntry {
             archetype: archetype.id(),
-            has_owner: owner_id.is_some() && archetype.contains(owner_id.unwrap()),
-            has_authority: authority_id.is_some() && archetype.contains(authority_id.unwrap()),
-            components,
+            has_owner: archetype.contains(owner_id),
             bundles,
+            last_changed,
         });
     }
 }

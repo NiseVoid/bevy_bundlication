@@ -209,17 +209,14 @@ impl<E: Event + std::fmt::Debug> std::fmt::Debug for NetworkEvent<E> {
 }
 /// A function that sends changes over the network
 pub type SendChangeFn = fn(
-    Identifier,
-    Option<&Owner>,
-    Option<&Authority>,
-    &EntityRef,
-    Identity,
+    &[bevy::ecs::component::ComponentId],
+    Option<u32>,
+    EntityRef,
     u8,
     &mut TakenBuffers,
     &mut WriteBuffer,
     &IdentifierMap,
     Tick,
-    bevy::ecs::component::Tick,
     bevy::ecs::component::Tick,
 ) -> ();
 
@@ -315,27 +312,6 @@ pub trait SendMethod: 'static + Sized + Sync + Send {
     /// Return who needs to receive the packet, if the [Identifier] of an entity is a client, the
     /// client id is provided. If None is returned the packet is not sent
     fn rule(client: Option<u32>) -> Option<SendRule>;
-
-    /// A function to check if a packet should be sent based on our [Identity] and the entity's [Authority],
-    /// returns the [SendRule] if it should be sent
-    #[inline(always)]
-    fn should_send(
-        our_identity: Identity,
-        auth: Option<&Authority>,
-        owner: Option<&Owner>,
-        ident: Identifier,
-    ) -> Option<SendRule> {
-        if !our_identity.can_send(auth) {
-            return None;
-        }
-
-        let client_id = match (owner, ident.is_client()) {
-            (Some(client_id), _) => Some(**client_id),
-            (_, true) => Some(ident.id),
-            (_, false) => None,
-        };
-        Self::rule(client_id)
-    }
 }
 
 /// The Direction for a bundle or event, either [ClientToServer] or [ServerToClient]
@@ -1003,6 +979,10 @@ struct NetworkingPlugin<Dir: Direction> {
 
 impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
     fn build(&self, app: &mut App) {
+        app.world.init_component::<Identifier>();
+        app.world.init_component::<Owner>();
+        app.world.init_component::<Authority>();
+
         app.init_resource::<Dir>()
             .init_resource::<WriteBuffer>()
             .init_resource::<Buffers>()
