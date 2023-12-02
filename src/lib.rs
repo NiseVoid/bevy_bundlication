@@ -699,6 +699,7 @@ fn handle_entity(
             (world.entity_mut(entity), 0)
         } else {
             if ident != Identity::Server {
+                #[cfg(debug_assertions)]
                 warn!("Client sent data for unknown Identifier: {:?}", identifier);
                 return false;
             }
