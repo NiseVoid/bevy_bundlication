@@ -441,8 +441,14 @@ impl<T> Default for RegistryDir<T> {
     }
 }
 
-#[derive(Resource, Deref, DerefMut, Default)]
+#[derive(Resource, Deref, DerefMut)]
 struct Channels(std::collections::BTreeSet<u8>);
+
+impl Channels {
+    fn new(despawn_channel: u8) -> Self {
+        Self([despawn_channel].into())
+    }
+}
 
 #[derive(Debug, Default)]
 struct Registry {
@@ -1039,7 +1045,6 @@ impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
         app.init_resource::<Dir>()
             .init_resource::<WriteBuffer>()
             .init_resource::<Buffers>()
-            .init_resource::<Channels>()
             .init_resource::<IdentifierMap>()
             .init_resource::<client_authority::HeldAuthority>()
             .init_resource::<RegistryDir<ServerToClient>>()
@@ -1047,6 +1052,7 @@ impl<Dir: Direction> Plugin for NetworkingPlugin<Dir> {
             .init_resource::<Events<Connected>>()
             .init_resource::<Events<Disconnected>>()
             .init_resource::<Events<StartReplication>>()
+            .insert_resource(Channels::new(self.despawn_channel))
             .insert_resource(despawn::DespawnChannel(self.despawn_channel))
             .configure_sets(
                 PreUpdate,
