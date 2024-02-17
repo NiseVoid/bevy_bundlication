@@ -269,40 +269,33 @@ pub trait NetworkedBundle: TypePath + Any + Sized {
     fn consumer() -> ConsumeFn;
 }
 
-// TODO: Sync this trait's api with NetworkedComponent/Wrapper
 /// A trait that allows events to be networked
 pub trait NetworkedEvent: Sync + Send + TypePath + Any + Sized {
-    /// The type the event is networked as
-    type As: Serialize + for<'a> Deserialize<'a>;
-
-    /// Convert the event to a networked format, along with the rule for who receives it.
-    /// Use [`Tick`] and [`IdentifierMap`] map to convert any necessary values.
-    fn to_networked(&self, tick: Tick, map: &IdentifierMap) -> IdentifierResult<Self::As>;
-
-    /// Reconstruct the event from the networked representation. Use [`Tick`] and
-    /// [`IdentifierManager`] to convert any necessary values
-    fn from_networked(
+    /// Write the event to the network, using the current [`Tick`] and [`IdentifierMap`] to
+    /// convert any necessary values
+    fn write_data(
+        &self,
+        writer: impl Write,
         tick: Tick,
-        map: &mut IdentifierManager,
-        networked: Self::As,
-    ) -> IdentifierResult<Self>;
+        map: &IdentifierMap,
+    ) -> IdentifierResult<()>;
+
+    /// Read the event from the network, using the [`Tick`] of the packet it was contained
+    /// in and the [`IdentifierManager`] to convert any necessary values
+    fn read(reader: impl Read, tick: Tick, map: &mut IdentifierManager) -> IdentifierResult<Self>;
 }
 
-impl<T: Sync + Send + Clone + TypePath + Serialize + for<'a> Deserialize<'a>> NetworkedEvent for T {
-    type As = Self;
-
+impl<T: Sync + Send + TypePath + Serialize + for<'a> Deserialize<'a>> NetworkedEvent for T {
     #[inline(always)]
-    fn to_networked(&self, _: Tick, _: &IdentifierMap) -> IdentifierResult<Self> {
-        Ok(self.clone())
+    fn write_data(&self, writer: impl Write, _: Tick, _: &IdentifierMap) -> IdentifierResult<()> {
+        serialize(writer, self).unwrap();
+        Ok(())
     }
 
     #[inline(always)]
-    fn from_networked(
-        _: Tick,
-        _: &mut IdentifierManager,
-        networked: Self,
-    ) -> IdentifierResult<Self> {
-        Ok(networked)
+    fn read(reader: impl Read, _: Tick, _: &mut IdentifierManager) -> IdentifierResult<Self> {
+        let v: Self = deserialize(reader).unwrap();
+        Ok(v)
     }
 }
 
@@ -542,8 +535,12 @@ impl<Event: NetworkedEvent> bevy::ecs::system::Command for SendEvent<Event> {
     fn apply(self, world: &mut World) {
         let tick = *world.resource::<Tick>();
         let packet_id = **world.resource::<Id<Event>>();
+
+        let mut buf = world.remove_resource::<WriteBuffer>().unwrap();
         let map = world.resource::<IdentifierMap>();
-        let Ok(networked) = self.event.to_networked(tick, map) else {
+        buf.push(Packet::EVENT);
+        buf.push(packet_id);
+        let Ok(()) = self.event.write_data(&mut buf, tick, &map) else {
             warn!(
                 "Tried to send event {:?} but failed to find a necessary Identifier",
                 Event::type_path()
@@ -551,9 +548,7 @@ impl<Event: NetworkedEvent> bevy::ecs::system::Command for SendEvent<Event> {
             return;
         };
 
-        let mut buf = world.remove_resource::<WriteBuffer>().unwrap();
         let connections = world.remove_resource::<Connections>().unwrap();
-
         let mut buffers = world.resource_mut::<Buffers>();
         let mut buffer = buffers.take(
             tick,
@@ -563,10 +558,6 @@ impl<Event: NetworkedEvent> bevy::ecs::system::Command for SendEvent<Event> {
                 .iter()
                 .map(|i| (i.ident, RecipientData::default())),
         );
-
-        buf.push(Packet::EVENT);
-        buf.push(packet_id);
-        serialize(&mut buf, &networked).unwrap();
 
         buffer.send(self.rule, &mut buf);
         buffer.fragment();
@@ -583,15 +574,11 @@ fn handle_event<Event: NetworkedEvent>(
     tick: Tick,
     cursor: &mut std::io::Cursor<&[u8]>,
 ) {
-    let Ok(networked): Result<Event::As, _> = deserialize(cursor) else {
-        return;
-    };
-
     world.resource_scope(|world, mut id_map: Mut<'_, IdentifierMap>| {
-        let Ok(event) = Event::from_networked(
+        let Ok(event) = Event::read(
+            cursor,
             tick,
-            &mut IdentifierManager::Full(world.entities(), &mut id_map),
-            networked,
+            &mut IdentifierManager::Full(&world.entities(), &mut id_map),
         ) else {
             warn!("Failed to process event: {:?}", Event::type_path());
             id_map.spawn_reserved(world);

@@ -16,24 +16,32 @@ pub struct NetworkedTestEvent {
 }
 
 impl NetworkedEvent for BroadcastEvent {
-    type As = NetworkedTestEvent;
-
-    fn to_networked(&self, _: Tick, map: &IdentifierMap) -> IdentifierResult<Self::As> {
+    fn write_data(
+        &self,
+        writer: impl std::io::Write,
+        _: Tick,
+        map: &IdentifierMap,
+    ) -> IdentifierResult<()> {
         let about = map.from_entity(&self.about)?;
-        Ok(Self::As {
-            about,
-            value: self.value.max(0) as u16,
-        })
+        serialize(
+            writer,
+            &NetworkedTestEvent {
+                about,
+                value: self.value.max(0) as u16,
+            },
+        )
+        .unwrap();
+        Ok(())
     }
 
-    fn from_networked(
+    fn read(
+        reader: impl std::io::Read,
         _: Tick,
         map: &mut IdentifierManager,
-        networked: Self::As,
     ) -> IdentifierResult<Self> {
-        let about = map.get_alive(&networked.about)?;
+        let networked: NetworkedTestEvent = deserialize(reader).unwrap();
         Ok(Self {
-            about,
+            about: map.get_alive(&networked.about)?,
             value: networked.value as i32,
         })
     }
@@ -46,24 +54,32 @@ pub struct TargetedEvent {
 }
 
 impl NetworkedEvent for TargetedEvent {
-    type As = NetworkedTestEvent;
-
-    fn to_networked(&self, _: Tick, map: &IdentifierMap) -> IdentifierResult<Self::As> {
+    fn write_data(
+        &self,
+        writer: impl std::io::Write,
+        _: Tick,
+        map: &IdentifierMap,
+    ) -> IdentifierResult<()> {
         let about = map.from_entity(&self.target)?;
-        Ok(Self::As {
-            about,
-            value: self.value.max(0) as u16,
-        })
+        serialize(
+            writer,
+            &NetworkedTestEvent {
+                about,
+                value: self.value.max(0) as u16,
+            },
+        )
+        .unwrap();
+        Ok(())
     }
 
-    fn from_networked(
+    fn read(
+        reader: impl std::io::Read,
         _: Tick,
         map: &mut IdentifierManager,
-        networked: Self::As,
     ) -> IdentifierResult<Self> {
-        let about = map.get_alive(&networked.about)?;
+        let networked: NetworkedTestEvent = deserialize(reader).unwrap();
         Ok(Self {
-            target: about,
+            target: map.get_alive(&networked.about)?,
             value: networked.value as i32,
         })
     }
