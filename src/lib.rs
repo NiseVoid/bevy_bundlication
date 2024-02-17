@@ -1,15 +1,15 @@
 //! Network replication based on bundles.
 //!
-//! Replication logic can be added to your app using [AppNetworkingExt].
+//! Replication logic can be added to your app using [`AppNetworkingExt`].
 //!
-//! You can register bundles with [AppNetworkingExt::register_bundle], if the direction matches the
-//! current app, any entity matching this bundle with an [Identifier] will then be sent over the network.
-//! If the App is a client, it will only send packets if we have or can claim [Authority].
-//! Direct updating of components can be avoided by adding the [Remote] on the entity, when this
+//! You can register bundles with [`AppNetworkingExt::register_bundle`], if the direction matches the
+//! current app, any entity matching this bundle with an [`Identifier`] will then be sent over the network.
+//! If the App is a client, it will only send packets if we have or can claim [`Authority`].
+//! Direct updating of components can be avoided by adding the [`Remote`] on the entity, when this
 //! component is around values will be stored there instead of the real field.
 //!
-//! You can register events with [AppNetworkingExt::register_event]. Events will be sent if the
-//! direction matches, on the receiving side events are wrapped in [NetworkEvent]
+//! You can register events with [`AppNetworkingExt::register_event`]. Events will be sent if the
+//! direction matches, on the receiving side events are wrapped in [`NetworkEvent`]
 
 #![warn(missing_docs)]
 #![allow(clippy::too_many_arguments)]
@@ -123,7 +123,7 @@ pub struct Disconnected(pub Identity);
 /// A trait needed to network components, provided by a blanket impl if the component has
 /// Serialize+Deserialize
 pub trait NetworkedComponent: Sized {
-    /// Write the component to the network, using the current [Tick] and [IdentifierMap] to
+    /// Write the component to the network, using the current [`Tick`] and [`IdentifierMap`] to
     /// convert any necessary values
     fn write_data(
         &self,
@@ -132,7 +132,7 @@ pub trait NetworkedComponent: Sized {
         map: &IdentifierMap,
     ) -> IdentifierResult<()>;
 
-    /// Read the component from the network, using the [Tick] of the packet it was contained
+    /// Read the component from the network, using the [`Tick`] of the packet it was contained
     /// in and the [`IdentifierManager`] to convert any necessary values
     fn read_new(
         reader: impl Read,
@@ -166,7 +166,7 @@ impl<T: Component + Serialize + for<'a> Deserialize<'a>> NetworkedComponent for 
 /// A trait that allows wrapping a component as another type for bevy_bundlication. Useful when working
 /// with components from bevy itself or 3rd party plugins
 pub trait NetworkedWrapper<From: Component> {
-    /// Write the component to the network, using the current [Tick] and [IdentifierMap] to
+    /// Write the component to the network, using the current [`Tick`] and [`IdentifierMap`] to
     /// convert any necessary values
     fn write_data(
         from: &From,
@@ -175,7 +175,7 @@ pub trait NetworkedWrapper<From: Component> {
         map: &IdentifierMap,
     ) -> IdentifierResult<()>;
 
-    /// Read the component from the network, using the [Tick] of the packet it was contained
+    /// Read the component from the network, using the [`Tick`] of the packet it was contained
     /// in and the [`IdentifierManager`] to convert any necessary values
     fn read_new(
         reader: impl Read,
@@ -195,13 +195,13 @@ pub trait NetworkedWrapper<From: Component> {
     }
 }
 
-/// An event received over the network, contains the [Identity] of the sender as well as the [Tick]
+/// An event received over the network, contains the [`Identity`] of the sender as well as the [`Tick`]
 /// it was timestamped with
 #[derive(Event)]
 pub struct NetworkEvent<Event> {
-    /// The [Identity] of the sender
+    /// The [`Identity`] of the sender
     pub sender: Identity,
-    /// The [Tick] the packet that contained this event was timestamped with
+    /// The [`Tick`] the packet that contained this event was timestamped with
     pub tick: Tick,
     /// The actual event
     pub event: Event,
@@ -276,10 +276,10 @@ pub trait NetworkedEvent: Sync + Send + TypePath + Any + Sized {
     type As: Serialize + for<'a> Deserialize<'a>;
 
     /// Convert the event to a networked format, along with the rule for who receives it.
-    /// Use [Tick] and [IdentifierMap] map to convert any necessary values.
+    /// Use [`Tick`] and [`IdentifierMap`] map to convert any necessary values.
     fn to_networked(&self, tick: Tick, map: &IdentifierMap) -> IdentifierResult<Self::As>;
 
-    /// Reconstruct the event from the networked representation. Use [Tick] and
+    /// Reconstruct the event from the networked representation. Use [`Tick`] and
     /// [`IdentifierManager`] to convert any necessary values
     fn from_networked(
         tick: Tick,
@@ -326,17 +326,17 @@ pub struct RegisteredEvent {
     path: &'static str,
 }
 
-/// A trait with information about the [Direction] and [SendRule]s for a bundle
+/// A trait with information about the [`Direction`] and [`SendRule`]s for a bundle
 pub trait SendMethod: 'static + Sized + Sync + Send {
-    /// The [Direction] of this send method
+    /// The [`Direction`] of this send method
     type Direction: Direction;
 
-    /// Return who needs to receive the packet, if the [Identifier] of an entity is a client, the
+    /// Return who needs to receive the packet, if the [`Identifier`] of an entity is a client, the
     /// client id is provided. If None is returned the packet is not sent
     fn rule(client: Option<u32>) -> Option<SendRule>;
 }
 
-/// The Direction for a bundle or event, either [ClientToServer] or [ServerToClient]
+/// The Direction for a bundle or event, either [`ClientToServer`] or [`ServerToClient`]
 pub trait Direction: Resource + 'static + Sized + Sync + Send + std::fmt::Debug + Default {
     /// The opposite direction
     type Reverse: Direction;
@@ -354,7 +354,7 @@ impl Direction for ServerToClient {
 /// the necessary systems, ordering, and conditions allows you to use this crate with any
 /// low-level networking crate
 pub trait NetImpl<Dir: Direction>: Resource + Sync + Send + Sized {
-    /// Receive all messages and handle them by calling process on [Handlers]
+    /// Receive all messages and handle them by calling process on [`handlers`]
     fn receive_messages(
         &mut self,
         world: &mut World,
@@ -366,7 +366,7 @@ pub trait NetImpl<Dir: Direction>: Resource + Sync + Send + Sized {
     fn send_messages(&mut self, msgs: impl Iterator<Item = (BufferKey, Vec<u8>)>);
 }
 
-/// The client to server [Direction]
+/// The client to server [`Direction`]
 #[derive(Resource, Debug, Default)]
 pub struct ClientToServer;
 
@@ -379,7 +379,7 @@ impl SendMethod for ClientToServer {
     }
 }
 
-/// The server to client [Direction]
+/// The server to client [`Direction`]
 #[derive(Resource, Debug, Default)]
 pub struct ServerToClient;
 
@@ -456,7 +456,7 @@ struct Registry {
     events: HashMap<TypeId, RegisteredEvent>,
 }
 
-/// An extention trait for [App] that adds methods to register networked bundles and events
+/// An extention trait for [`App`] that adds methods to register networked bundles and events
 pub trait AppNetworkingExt {
     /// Register a bundle
     fn register_bundle<Method: SendMethod, Bundle: NetworkedBundle, const CHANNEL: u8>(
@@ -625,7 +625,7 @@ impl Packet {
 }
 
 impl<Dir: Direction> Handlers<Dir> {
-    /// Construct a [Handlers] with the specified capacity
+    /// Construct a [`Handlers`] with the specified capacity
     pub fn with_capacity(bundles: usize, events: usize) -> Self {
         Self {
             bundles: Vec::with_capacity(bundles),
@@ -634,7 +634,7 @@ impl<Dir: Direction> Handlers<Dir> {
         }
     }
 
-    /// Process a packet, should be called immediately on every packet received in [Direction]
+    /// Process a packet, should be called immediately on every packet received in [`Direction`]
     #[inline(always)]
     pub(crate) fn process(&self, world: &mut World, ident: Identity, b: &[u8]) {
         let mut cursor = std::io::Cursor::new(b);
@@ -1007,7 +1007,7 @@ struct GenerateSet;
 
 // TODO: Add better SystemSet for actual end users to schedule before/after bevy_bundlication stuff
 
-/// A [SystemSet] containing all systems to replicate data between apps
+/// A [`SystemSet`] containing all systems to replicate data between apps
 #[derive(SystemSet, Clone, PartialEq, Eq, Debug, Hash)]
 pub enum BundlicationSet {
     /// The set that contains all systems to receive data
@@ -1016,7 +1016,7 @@ pub enum BundlicationSet {
     Send,
 }
 
-/// A [SystemSet] to group and order different internal stages for replication logic
+/// A [`SystemSet`] to group and order different internal stages for replication logic
 #[derive(SystemSet, Clone, PartialEq, Eq, Debug, Hash)]
 pub enum InternalSet {
     /// Read packets from the network
