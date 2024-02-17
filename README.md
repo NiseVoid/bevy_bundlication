@@ -31,12 +31,23 @@ pub struct Speed(f32);
 pub struct JustTranslation(Vec3);
 
 impl NetworkedWrapper<Transform> for JustTranslation {
-    fn from_component(_: Tick, _: &IdentifierMap, t: &Transform) -> IdentifierResult<Self> {
-        Ok(Self(t.translation))
+    fn write_data(
+        from: &Transform,
+        writer: impl Write,
+        tick: Tick,
+        map: &IdentifierMap,
+    ) -> IdentifierResult<()> {
+        serialize(writer, from.translation).unwrap();
+        Ok(())
     }
 
-    fn to_component(self, _: Tick, _: &IdentifierMap) -> IdentifierResult<Transform> {
-        Ok(Transform::from_translation(self))
+    fn read_new(
+        reader: impl Read,
+        tick: Tick,
+        map: &mut IdentifierManager,
+    ) -> IdentifierResult<Transform> {
+        let translation: Vec3 = deserialize(reader).unwrap();
+        Ok(Transform::from_translation(translation))
     }
 }
 
