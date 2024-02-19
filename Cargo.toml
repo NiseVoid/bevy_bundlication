@@ -1,5 +1,5 @@
 [workspace]
-package.version = "0.1.1"
+package.version = "0.2.0"
 package.license = "MIT OR Apache-2.0"
 package.repository = "https://github.com/NiseVoid/bevy_bundlication"
 
@@ -25,9 +25,9 @@ repository.workspace = true
 edition = "2021"
 
 [dependencies]
-bevy_bundlication_macros = {version = "0.1.0", path = "macros"}
+bevy_bundlication_macros = {version = "0.2.0", path = "macros"}
 
-bevy = {version = "0.12", default_features=false}
+bevy = {version = "0.13", default_features=false}
 bevy_renet = {version = "0.0.10", default-features=false, optional = true}
 
 bincode = "1.3"

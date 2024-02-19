@@ -54,11 +54,7 @@ impl Identifier {
 /// An extention trait for Commands to spawn entities with an Identifier
 pub trait CommandsSpawnIdentifierExt<'a, 'w, 's> {
     /// Spawn an entity with a client identifier
-    fn spawn_client(
-        &'a mut self,
-        client_id: u32,
-        bundle: impl Bundle,
-    ) -> EntityCommands<'w, 's, 'a>;
+    fn spawn_client(&'a mut self, client_id: u32, bundle: impl Bundle) -> EntityCommands<'a>;
 
     /// Spawn an entity with an identifier
     fn spawn_with_id(
@@ -66,16 +62,12 @@ pub trait CommandsSpawnIdentifierExt<'a, 'w, 's> {
         id_type: impl Into<u8>,
         id: u32,
         bundle: impl Bundle,
-    ) -> EntityCommands<'w, 's, 'a>;
+    ) -> EntityCommands<'a>;
 }
 
 impl<'a, 'w, 's> CommandsSpawnIdentifierExt<'a, 'w, 's> for Commands<'w, 's> {
     #[inline(always)]
-    fn spawn_client(
-        &'a mut self,
-        client_id: u32,
-        bundle: impl Bundle,
-    ) -> EntityCommands<'w, 's, 'a> {
+    fn spawn_client(&'a mut self, client_id: u32, bundle: impl Bundle) -> EntityCommands<'a> {
         self.spawn_with_id(0, client_id, bundle)
     }
 
@@ -85,7 +77,7 @@ impl<'a, 'w, 's> CommandsSpawnIdentifierExt<'a, 'w, 's> for Commands<'w, 's> {
         id_type: impl Into<u8>,
         id: u32,
         bundle: impl Bundle,
-    ) -> EntityCommands<'w, 's, 'a> {
+    ) -> EntityCommands<'a> {
         let id = Identifier::new(id_type, id);
         let entity = self.spawn((id, bundle)).id();
 
@@ -103,7 +95,7 @@ pub trait EntityCommandsInsertIdentifierExt {
     fn insert_id(&mut self, id_type: impl Into<u8>, id: u32) -> &mut Self;
 }
 
-impl EntityCommandsInsertIdentifierExt for EntityCommands<'_, '_, '_> {
+impl EntityCommandsInsertIdentifierExt for EntityCommands<'_> {
     #[inline(always)]
     fn insert_client(&mut self, client_id: u32) -> &mut Self {
         self.insert_id(0, client_id)

@@ -56,7 +56,7 @@ pub fn iterate_world<Dir: Direction>(world: &mut World) {
         let archetype = archetypes.get(entry.archetype).unwrap();
 
         for entity in archetype.entities().iter() {
-            let entity = world.entity(entity.entity());
+            let entity = world.entity(entity.id());
             if let Identity::Client(client_id) = ident {
                 if let Some(auth) = entity.get::<Authority>() {
                     if !auth.can_claim(client_id) {
