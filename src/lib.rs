@@ -992,8 +992,6 @@ impl Plugin for ServerNetworkingPlugin {
 #[derive(SystemSet, Clone, PartialEq, Eq, Debug, Hash)]
 struct GenerateSet;
 
-// TODO: Add better SystemSet for actual end users to schedule before/after bevy_bundlication stuff
-
 /// A [`SystemSet`] containing all systems to replicate data between apps
 #[derive(SystemSet, Clone, PartialEq, Eq, Debug, Hash)]
 pub enum BundlicationSet {
