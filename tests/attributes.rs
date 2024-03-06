@@ -29,8 +29,8 @@ impl NetworkedWrapper<Transform> for Position {
         .unwrap();
         Ok(())
     }
-    fn read_new(r: impl Read, _: Tick, _: &mut IdentifierManager) -> IdentifierResult<Transform> {
-        let pos: Self = deserialize(r).unwrap();
+    fn read_new(r: impl Read, _: Tick, _: &mut IdentifierManager) -> NetworkReadResult<Transform> {
+        let pos: Self = deserialize(r)?;
         Ok(Transform {
             translation: Vec3::new(pos.0 as f32, pos.1 as f32, pos.2 as f32),
             ..default()

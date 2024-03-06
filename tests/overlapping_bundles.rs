@@ -23,8 +23,8 @@ impl NetworkedComponent for Hp {
         Ok(())
     }
 
-    fn read_new(r: impl Read, _: Tick, _: &mut IdentifierManager) -> IdentifierResult<Self> {
-        let hp: HpSerialized = deserialize(r).unwrap();
+    fn read_new(r: impl Read, _: Tick, _: &mut IdentifierManager) -> NetworkReadResult<Self> {
+        let hp: HpSerialized = deserialize(r)?;
         Ok(Self(hp.0 as i64))
     }
 }

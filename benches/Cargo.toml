@@ -7,7 +7,7 @@ publish = false
 [dev-dependencies]
 serde = "1.0"
 bevy_bundlication = { path = "../", default-features = false, features = ["test"] }
-bevy = { version = "0.12", default-features = false }
+bevy = { version = "0.13", default-features = false }
 criterion = { version = "0.5", default-features = false, features = [
   "cargo_bench_support",
 ] }

@@ -67,9 +67,9 @@ pub mod prelude {
         },
         serialize,
         tick::{Tick, TickSet},
-        BundlicationSet, ClientNetworkingPlugin, ClientToServer, NetworkEvent, NetworkedBundle,
-        NetworkedComponent, NetworkedEvent, NetworkedWrapper, SendEvent, ServerNetworkingPlugin,
-        ServerToAll, ServerToClient, ServerToObserver, ServerToOwner,
+        BundlicationSet, ClientNetworkingPlugin, ClientToServer, NetworkEvent, NetworkReadResult,
+        NetworkedBundle, NetworkedComponent, NetworkedEvent, NetworkedWrapper, SendEvent,
+        ServerNetworkingPlugin, ServerToAll, ServerToClient, ServerToObserver, ServerToOwner,
     };
     pub use bevy_bundlication_macros::NetworkedBundle;
 
@@ -101,7 +101,7 @@ use bevy::{
     ecs::schedule::ScheduleLabel,
     prelude::*,
     reflect::TypePath,
-    utils::{intern::Interned, HashMap},
+    utils::{intern::Interned, thiserror, thiserror::Error, HashMap},
 };
 
 use serde::{Deserialize, Serialize};
@@ -118,6 +118,20 @@ pub struct Connected(pub Identity);
 /// An event fired when a client disconnects.
 #[derive(Event, Deref)]
 pub struct Disconnected(pub Identity);
+
+/// An error types returned when reading from the network
+#[derive(Debug, Error)]
+pub enum NetworkReadError {
+    /// An error about an invalid identifier
+    #[error("Invalid Identifier: {0:?}")]
+    InvalidIdentifier(#[from] identifier::IdentifierError),
+    /// A bincode error received while reading
+    #[error("Bincode error: {0:?}")]
+    BincodeError(#[from] bincode::Error),
+}
+
+/// A [`Result`] type alias for [`NetworkReadError`]s
+pub type NetworkReadResult<T> = Result<T, NetworkReadError>;
 
 // TODO: Change error handling. Reads should not be forced to resort to panics
 /// A trait needed to network components, provided by a blanket impl if the component has
@@ -138,7 +152,7 @@ pub trait NetworkedComponent: Sized {
         reader: impl Read,
         tick: Tick,
         map: &mut IdentifierManager,
-    ) -> IdentifierResult<Self>;
+    ) -> NetworkReadResult<Self>;
 
     /// Read the component in-place from the network, this can be used to write directly to
     fn read_in_place(
@@ -146,7 +160,7 @@ pub trait NetworkedComponent: Sized {
         reader: impl Read,
         tick: Tick,
         map: &mut IdentifierManager,
-    ) -> IdentifierResult<()> {
+    ) -> NetworkReadResult<()> {
         *self = Self::read_new(reader, tick, map)?;
         Ok(())
     }
@@ -158,8 +172,8 @@ impl<T: Component + Serialize + for<'a> Deserialize<'a>> NetworkedComponent for 
         Ok(())
     }
 
-    fn read_new(r: impl Read, _: Tick, _: &mut IdentifierManager) -> IdentifierResult<Self> {
-        Ok(deserialize(r).unwrap())
+    fn read_new(r: impl Read, _: Tick, _: &mut IdentifierManager) -> NetworkReadResult<Self> {
+        Ok(deserialize(r)?)
     }
 }
 
@@ -181,7 +195,7 @@ pub trait NetworkedWrapper<From: Component> {
         reader: impl Read,
         tick: Tick,
         map: &mut IdentifierManager,
-    ) -> IdentifierResult<From>;
+    ) -> NetworkReadResult<From>;
 
     /// Read the component in-place from the network, this can be used to write directly to
     fn read_in_place(
@@ -189,7 +203,7 @@ pub trait NetworkedWrapper<From: Component> {
         reader: impl Read,
         tick: Tick,
         map: &mut IdentifierManager,
-    ) -> IdentifierResult<()> {
+    ) -> NetworkReadResult<()> {
         *from = Self::read_new(reader, tick, map)?;
         Ok(())
     }
@@ -236,7 +250,8 @@ pub type SendChangeFn = fn(
 ) -> ();
 
 /// A function that applies changes from packets received over the network
-pub type ApplyChangeFn = fn(&mut World, Identity, Tick, &mut std::io::Cursor<&[u8]>) -> ();
+pub type ApplyChangeFn =
+    fn(&mut World, Identity, Tick, &mut std::io::Cursor<&[u8]>) -> NetworkReadResult<()>;
 
 /// A function that applies changes to a specific entity
 pub type ApplyEntityChangeFn = fn(
@@ -245,10 +260,10 @@ pub type ApplyEntityChangeFn = fn(
     Identity,
     Tick,
     &mut std::io::Cursor<&[u8]>,
-) -> ();
+) -> NetworkReadResult<()>;
 
 /// A function that consumes the packet bytes without applying them
-pub type ConsumeFn = fn(Tick, &mut std::io::Cursor<&[u8]>) -> ();
+pub type ConsumeFn = fn(Tick, &mut std::io::Cursor<&[u8]>) -> NetworkReadResult<()>;
 
 /// A trait that allows groups of components to be networked, this trait should not be impl'd
 /// directly and instead be implemented by the derive macro of the same name.
@@ -282,7 +297,7 @@ pub trait NetworkedEvent: Sync + Send + TypePath + Any + Sized {
 
     /// Read the event from the network, using the [`Tick`] of the packet it was contained
     /// in and the [`IdentifierManager`] to convert any necessary values
-    fn read(reader: impl Read, tick: Tick, map: &mut IdentifierManager) -> IdentifierResult<Self>;
+    fn read(reader: impl Read, tick: Tick, map: &mut IdentifierManager) -> NetworkReadResult<Self>;
 }
 
 impl<T: Sync + Send + TypePath + Serialize + for<'a> Deserialize<'a>> NetworkedEvent for T {
@@ -293,8 +308,8 @@ impl<T: Sync + Send + TypePath + Serialize + for<'a> Deserialize<'a>> NetworkedE
     }
 
     #[inline(always)]
-    fn read(reader: impl Read, _: Tick, _: &mut IdentifierManager) -> IdentifierResult<Self> {
-        let v: Self = deserialize(reader).unwrap();
+    fn read(reader: impl Read, _: Tick, _: &mut IdentifierManager) -> NetworkReadResult<Self> {
+        let v: Self = deserialize(reader)?;
         Ok(v)
     }
 }
@@ -573,17 +588,13 @@ fn handle_event<Event: NetworkedEvent>(
     ident: Identity,
     tick: Tick,
     cursor: &mut std::io::Cursor<&[u8]>,
-) {
+) -> NetworkReadResult<()> {
     world.resource_scope(|world, mut id_map: Mut<'_, IdentifierMap>| {
-        let Ok(event) = Event::read(
+        let event = Event::read(
             cursor,
             tick,
             &mut IdentifierManager::Full(&world.entities(), &mut id_map),
-        ) else {
-            warn!("Failed to process event: {:?}", Event::type_path());
-            id_map.spawn_reserved(world);
-            return;
-        };
+        )?;
         id_map.spawn_reserved(world);
 
         let network_event = NetworkEvent {
@@ -592,7 +603,8 @@ fn handle_event<Event: NetworkedEvent>(
             event,
         };
         world.send_event(network_event);
-    });
+        Ok(())
+    })
 }
 
 /// A resource holding handlers for each known packet id
@@ -642,8 +654,16 @@ impl<Dir: Direction> Handlers<Dir> {
                     despawn::handle_despawns(world, ident, tick, &mut cursor);
                 }
                 Packet::ENTITY => {
-                    if !handle_entity(&self.bundles, world, ident, tick, &mut cursor) {
-                        break;
+                    match handle_entity(&self.bundles, world, ident, tick, &mut cursor) {
+                        Err(_e) => {
+                            #[cfg(debug_assertions)]
+                            warn!("Failed to read event: {:?}", _e);
+                            break;
+                        }
+                        Ok(false) => {
+                            break;
+                        }
+                        _ => {}
                     }
                 }
                 Packet::EVENT => {
@@ -657,7 +677,11 @@ impl<Dir: Direction> Handlers<Dir> {
                     let Some(handler) = self.events.get((buf[0] - 1) as usize) else {
                         break;
                     };
-                    (handler)(world, ident, tick, &mut cursor);
+                    if let Err(_e) = (handler)(world, ident, tick, &mut cursor) {
+                        #[cfg(debug_assertions)]
+                        warn!("Failed to read event: {:?}", _e);
+                        break;
+                    }
                 }
                 _ => break,
             }
@@ -671,10 +695,8 @@ fn handle_entity(
     ident: Identity,
     tick: Tick,
     mut cursor: &mut std::io::Cursor<&[u8]>,
-) -> bool {
-    let Ok(identifier) = deserialize(&mut cursor) else {
-        return false;
-    };
+) -> NetworkReadResult<bool> {
+    let identifier = deserialize(&mut cursor)?;
 
     world.resource_scope(|world, mut id_map: Mut<'_, IdentifierMap>| {
         let world = world.as_unsafe_world_cell();
@@ -684,7 +706,7 @@ fn handle_entity(
         let entity = match id_map.get(&identifier, tick) {
             Ok(EntityStatus::Alive(entity)) => Some(entity),
             Ok(EntityStatus::Despawned(_)) => {
-                return consume_bundles(handlers, tick, cursor);
+                return Ok(consume_bundles(handlers, tick, cursor)?);
             }
             Err(_) => None,
         };
@@ -694,7 +716,7 @@ fn handle_entity(
             if ident != Identity::Server {
                 #[cfg(debug_assertions)]
                 warn!("Client sent data for unknown Identifier: {:?}", identifier);
-                return false;
+                return Ok(false);
             }
             let entity = world.spawn((identifier, LastUpdate::<()>::new(tick)));
             id_map.insert(identifier, entity.id());
@@ -705,17 +727,17 @@ fn handle_entity(
         loop {
             let Ok(_) = cursor.read_exact(&mut buf) else {
                 id_map.spawn_reserved(world);
-                return false;
+                return Ok(false);
             };
             // Bundle id 0 is used to mark the end of an entity
             if buf[0] == 0 {
                 id_map.spawn_reserved(world);
-                return true;
+                return Ok(true);
             }
 
             let Some(handler) = handlers.get((buf[0] - 1) as usize) else {
                 id_map.spawn_reserved(world);
-                return false;
+                return Ok(false);
             };
             (handler.0[handler_index])(
                 &mut entity,
@@ -723,7 +745,7 @@ fn handle_entity(
                 ident,
                 tick,
                 cursor,
-            );
+            )?;
         }
     })
 }
@@ -732,21 +754,21 @@ fn consume_bundles(
     handlers: &[([ApplyEntityChangeFn; 2], ConsumeFn)],
     tick: Tick,
     cursor: &mut std::io::Cursor<&[u8]>,
-) -> bool {
+) -> NetworkReadResult<bool> {
     let mut buf = [0u8; 1];
     loop {
         let Ok(_) = cursor.read_exact(&mut buf) else {
-            return false;
+            return Ok(false);
         };
         // Bundle id 0 is used to mark the end of an entity
         if buf[0] == 0 {
-            return true;
+            return Ok(true);
         }
 
         let Some(handler) = handlers.get((buf[0] - 1) as usize) else {
-            return false;
+            return Ok(false);
         };
-        (handler.1)(tick, cursor);
+        (handler.1)(tick, cursor)?;
     }
 }
 

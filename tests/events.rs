@@ -38,8 +38,8 @@ impl NetworkedEvent for BroadcastEvent {
         reader: impl std::io::Read,
         _: Tick,
         map: &mut IdentifierManager,
-    ) -> IdentifierResult<Self> {
-        let networked: NetworkedTestEvent = deserialize(reader).unwrap();
+    ) -> NetworkReadResult<Self> {
+        let networked: NetworkedTestEvent = deserialize(reader)?;
         Ok(Self {
             about: map.get_alive(&networked.about)?,
             value: networked.value as i32,
@@ -76,8 +76,8 @@ impl NetworkedEvent for TargetedEvent {
         reader: impl std::io::Read,
         _: Tick,
         map: &mut IdentifierManager,
-    ) -> IdentifierResult<Self> {
-        let networked: NetworkedTestEvent = deserialize(reader).unwrap();
+    ) -> NetworkReadResult<Self> {
+        let networked: NetworkedTestEvent = deserialize(reader)?;
         Ok(Self {
             target: map.get_alive(&networked.about)?,
             value: networked.value as i32,

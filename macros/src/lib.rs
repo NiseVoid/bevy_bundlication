@@ -191,7 +191,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                     <#networked_as as #import_path::NetworkedWrapper<#field_type>>::write_data(&#var, &mut buffer, tick, id_map).unwrap()
                 });
                 new = quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(&mut buffer, tick, id_manager).unwrap()
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(&mut buffer, tick, id_manager)?
                 };
             } else {
                 write_component.push(quote! {
@@ -201,8 +201,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 });
                 new = quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::read_new(&mut buffer, tick, id_manager)
-                        .unwrap()
+                        ::read_new(&mut buffer, tick, id_manager)?
                 };
             }
 
@@ -213,13 +212,11 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             } else if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 update_component.push(quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, &mut buffer, tick, id_manager).unwrap()
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, &mut buffer, tick, id_manager)?
                 });
             } else {
                 update_component.push(quote! {
-                    <#field_type as #import_path::NetworkedComponent>
-                        ::read_in_place(#var, &mut buffer, tick, id_manager)
-                        .unwrap()
+                    <#field_type as #import_path::NetworkedComponent>::read_in_place(#var, &mut buffer, tick, id_manager)?
                 });
             }
             new_component.push(new);
@@ -276,11 +273,12 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 }, buffer);
             }
 
-            fn consume(tick: #import_path::Tick, mut buffer: &mut std::io::Cursor<&[u8]>) {
+            fn consume(tick: #import_path::Tick, mut buffer: &mut std::io::Cursor<&[u8]>) -> NetworkReadResult<()> {
                 let mut id_manager = &mut IdentifierManager::Ignore;
                 #(
                     _ = #new_component;
                 )*
+                Ok(())
             }
 
             fn spawn(
@@ -289,7 +287,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 ident: #import_path::Identity,
                 tick: #import_path::Tick,
                 mut buffer: &mut std::io::Cursor<&[u8]>
-            ) {
+            ) -> NetworkReadResult<()> {
                 entity.insert((
                     #import_path::LastUpdate::<Self>::new(tick),
                     #(
@@ -299,6 +297,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                         #spawn_only_type::default(),
                     )*
                 ));
+                Ok(())
             }
 
             fn apply_changes(
@@ -307,18 +306,16 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 ident: #import_path::Identity,
                 tick: #import_path::Tick,
                 mut buffer: &mut std::io::Cursor<&[u8]>
-            ) {
+            ) -> NetworkReadResult<()> {
                 let bundle_tick = entity.get::<#import_path::LastUpdate<Self>>().map(|t| **t).unwrap_or_default();
                 if bundle_tick >= tick {
-                    Self::consume(tick, buffer);
-                    return;
+                    return Self::consume(tick, buffer);
                 }
 
                 let auth = entity.get::<#import_path::Authority>().map(|a| *a).unwrap_or_default();
                 if let #import_path::Identity::Client(client_id) = ident {
                     if !auth.can_claim(client_id) {
-                        Self::consume(tick, buffer);
-                        return;
+                        return Self::consume(tick, buffer);
                     }
                     entity.insert(#import_path::Authority::Client(client_id));
                 }
@@ -350,6 +347,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                         None => {entity.insert(#spawn_only_type::default());}
                     }
                 )*
+                Ok(())
             }
         }
 

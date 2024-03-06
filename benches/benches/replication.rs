@@ -341,7 +341,7 @@ fn replication(c: &mut Criterion) {
                             let update = unsafe {
                                 client_app
                                     .world
-                                    .get_by_id(e.entity(), update_id)
+                                    .get_by_id(e.id(), update_id)
                                     .unwrap()
                                     .deref::<LastUpdate<()>>()
                             };

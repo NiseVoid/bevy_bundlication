@@ -3,6 +3,7 @@ use crate::Tick;
 use bevy::{
     ecs::system::{Command, EntityCommands},
     prelude::*,
+    utils::thiserror::Error,
 };
 use serde::{Deserialize, Serialize};
 
@@ -157,11 +158,13 @@ pub struct IdentifierMap {
 }
 
 /// An error occured when mapping [Identifier]s
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum IdentifierError {
     /// The [Identifier] was despawned
+    #[error("Identifier has been despawned")]
     Despawned,
     /// The [Identifier] does not exist
+    #[error("Identifier does not exist")]
     NonExistent,
 }
 
