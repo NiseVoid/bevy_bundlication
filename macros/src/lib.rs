@@ -14,6 +14,7 @@ fn import_path() -> syn::Path {
 
 struct BundleField {
     skip: bool,
+    spawn: bool,
     send: bool,
     optional: bool,
     networked_as: Option<syn::Ident>,
@@ -24,6 +25,7 @@ impl Default for BundleField {
     fn default() -> Self {
         Self {
             skip: false,
+            spawn: true,
             send: true,
             optional: false,
             networked_as: None,
@@ -76,6 +78,8 @@ impl syn::parse::Parser for BundleField {
                         self.skip = true;
                     } else if ident == NETWORKED_ATTRIBUTE_NO_SEND_NAME {
                         self.send = false;
+                    } else if ident == NETWORKED_ATTRIBUTE_NO_SPAWN_NAME {
+                        self.spawn = false;
                     } else if ident == NETWORKED_ATTRIBUTE_OPTIONAL_NAME {
                         self.optional = true;
                     } else if ident == NETWORKED_ATTRIBUTE_AS_NAME {
@@ -114,6 +118,7 @@ impl syn::parse::Parser for BundleField {
 const NETWORKED_ATTRIBUTE_NAME: &str = "networked";
 const NETWORKED_ATTRIBUTE_SKIP_NAME: &str = "skip";
 const NETWORKED_ATTRIBUTE_NO_SEND_NAME: &str = "no_send";
+const NETWORKED_ATTRIBUTE_NO_SPAWN_NAME: &str = "no_spawn";
 const NETWORKED_ATTRIBUTE_OPTIONAL_NAME: &str = "optional";
 const NETWORKED_ATTRIBUTE_AS_NAME: &str = "as";
 const NETWORKED_ATTRIBUTE_UPDATE_NAME: &str = "update";
@@ -221,9 +226,11 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             }
             new_component.push(new);
         } else {
-            spawn_only_type.push(quote! {
-                #field_type
-            });
+            if field_info.spawn {
+                spawn_only_type.push(quote! {
+                    #field_type
+                });
+            }
 
             if !field_info.optional {
                 filters.push(quote! {
