@@ -1,7 +1,7 @@
 use bevy::{ecs::schedule::ScheduleLabel, prelude::*, utils::intern::Interned};
 
 /// The current Tick of the networked simulation
-#[derive(Resource, Clone, Copy, Deref, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Resource, Clone, Copy, Deref, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Tick(pub u32);
 
 use std::ops::{Add, Sub};
