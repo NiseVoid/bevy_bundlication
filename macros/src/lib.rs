@@ -12,11 +12,58 @@ fn import_path() -> syn::Path {
     .unwrap()
 }
 
+struct BundleAttributes {
+    priority: Option<proc_macro2::Literal>,
+}
+
+impl Default for BundleAttributes {
+    fn default() -> Self {
+        Self { priority: None }
+    }
+}
+
+impl syn::parse::Parser for BundleAttributes {
+    type Output = Self;
+
+    fn parse2(mut self, tokens: proc_macro2::TokenStream) -> syn::Result<Self::Output> {
+        let mut token_iter = tokens.into_iter();
+        while let Some(token) = token_iter.next() {
+            match token {
+                proc_macro2::TokenTree::Ident(ident) => {
+                    if ident == BUNDLICATION_ATTRIBUTE_PRIORITY_NAME {
+                        self.priority = Some(parse_literal(&mut token_iter, ident)?);
+                    } else {
+                        return Err(syn::Error::new(ident.span(), "unknown ident"));
+                    }
+                }
+                proc_macro2::TokenTree::Punct(punct) => {
+                    return Err(syn::Error::new(punct.span(), "unexpected punctuation"));
+                }
+                proc_macro2::TokenTree::Group(group) => {
+                    return Err(syn::Error::new(group.span(), "unexpected group"));
+                }
+                proc_macro2::TokenTree::Literal(lit) => {
+                    return Err(syn::Error::new(lit.span(), "unexpected literal"));
+                }
+            }
+
+            if let Some(token) = token_iter.next() {
+                let proc_macro2::TokenTree::Punct(punct) = token else {
+                    return Err(syn::Error::new(token.span(), "expected ,"));
+                };
+                if punct.as_char() != ',' {
+                    return Err(syn::Error::new(punct.span(), "expected ,"));
+                }
+            }
+        }
+
+        Ok(self)
+    }
+}
+
 struct BundleField {
     skip: bool,
-    spawn: bool,
     send: bool,
-    optional: bool,
     networked_as: Option<syn::Ident>,
     update_with: Option<syn::Ident>,
 }
@@ -25,16 +72,42 @@ impl Default for BundleField {
     fn default() -> Self {
         Self {
             skip: false,
-            spawn: true,
             send: true,
-            optional: false,
             networked_as: None,
             update_with: None,
         }
     }
 }
 
-// TODO: Add some verification to prevent stupid errors about missing field impls
+fn parse_literal(
+    token_iter: &mut impl Iterator<Item = proc_macro2::TokenTree>,
+    ident: proc_macro2::Ident,
+) -> syn::Result<proc_macro2::Literal> {
+    // Parse in format " = lit"
+    let Some(next) = token_iter.next() else {
+        return Err(syn::Error::new(
+            ident.span(),
+            "expected to be followed by =",
+        ));
+    };
+    let proc_macro2::TokenTree::Punct(punct) = next else {
+        return Err(syn::Error::new(next.span(), "expected ="));
+    };
+    if punct.as_char() != '=' {
+        return Err(syn::Error::new(punct.span(), "expected ="));
+    }
+    let Some(next) = token_iter.next() else {
+        return Err(syn::Error::new(
+            punct.span(),
+            "expected to be followed by literal",
+        ));
+    };
+    let proc_macro2::TokenTree::Literal(lit) = next else {
+        return Err(syn::Error::new(next.span(), "expected literal"));
+    };
+
+    Ok(lit)
+}
 
 fn parse_ident(
     token_iter: &mut impl Iterator<Item = proc_macro2::TokenTree>,
@@ -74,17 +147,13 @@ impl syn::parse::Parser for BundleField {
         while let Some(token) = token_iter.next() {
             match token {
                 proc_macro2::TokenTree::Ident(ident) => {
-                    if ident == NETWORKED_ATTRIBUTE_SKIP_NAME {
+                    if ident == BUNDLICATION_ATTRIBUTE_SKIP_NAME {
                         self.skip = true;
-                    } else if ident == NETWORKED_ATTRIBUTE_NO_SEND_NAME {
+                    } else if ident == BUNDLICATION_ATTRIBUTE_NO_SEND_NAME {
                         self.send = false;
-                    } else if ident == NETWORKED_ATTRIBUTE_NO_SPAWN_NAME {
-                        self.spawn = false;
-                    } else if ident == NETWORKED_ATTRIBUTE_OPTIONAL_NAME {
-                        self.optional = true;
-                    } else if ident == NETWORKED_ATTRIBUTE_AS_NAME {
+                    } else if ident == BUNDLICATION_ATTRIBUTE_AS_NAME {
                         self.networked_as = Some(parse_ident(&mut token_iter, ident)?);
-                    } else if ident == NETWORKED_ATTRIBUTE_UPDATE_NAME {
+                    } else if ident == BUNDLICATION_ATTRIBUTE_UPDATE_NAME {
                         self.update_with = Some(parse_ident(&mut token_iter, ident)?);
                     } else {
                         return Err(syn::Error::new(ident.span(), "unknown ident"));
@@ -115,20 +184,33 @@ impl syn::parse::Parser for BundleField {
     }
 }
 
-const NETWORKED_ATTRIBUTE_NAME: &str = "networked";
-const NETWORKED_ATTRIBUTE_SKIP_NAME: &str = "skip";
-const NETWORKED_ATTRIBUTE_NO_SEND_NAME: &str = "no_send";
-const NETWORKED_ATTRIBUTE_NO_SPAWN_NAME: &str = "no_spawn";
-const NETWORKED_ATTRIBUTE_OPTIONAL_NAME: &str = "optional";
-const NETWORKED_ATTRIBUTE_AS_NAME: &str = "as";
-const NETWORKED_ATTRIBUTE_UPDATE_NAME: &str = "update";
+const BUNDLICATION_ATTRIBUTE_NAME: &str = "bundlication";
+const BUNDLICATION_ATTRIBUTE_PRIORITY_NAME: &str = "priority";
+const BUNDLICATION_ATTRIBUTE_SKIP_NAME: &str = "skip";
+const BUNDLICATION_ATTRIBUTE_NO_SEND_NAME: &str = "no_send";
+const BUNDLICATION_ATTRIBUTE_AS_NAME: &str = "as";
+const BUNDLICATION_ATTRIBUTE_UPDATE_NAME: &str = "update";
 
-// TODO: Add option for alternative default function for non-networked fields
+// TODO: Add option for alternative default function for non-sent fields
 
-#[proc_macro_derive(NetworkedBundle, attributes(networked))]
+#[proc_macro_derive(NetworkedBundle, attributes(bundlication))]
 pub fn derive_bundle(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     let import_path = import_path();
+
+    let mut attributes = BundleAttributes::default();
+    for attr in ast
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident(BUNDLICATION_ATTRIBUTE_NAME))
+    {
+        match attr.parse_args_with(attributes) {
+            Ok(new_attributes) => attributes = new_attributes,
+            Err(e) => {
+                return e.into_compile_error().into();
+            }
+        }
+    }
 
     let named_fields = match get_named_struct_fields(&ast.data) {
         Ok(fields) => &fields.named,
@@ -142,7 +224,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         for attr in field
             .attrs
             .iter()
-            .filter(|a| a.path().is_ident(NETWORKED_ATTRIBUTE_NAME))
+            .filter(|a| a.path().is_ident(BUNDLICATION_ATTRIBUTE_NAME))
         {
             match attr.parse_args_with(bundle_field) {
                 Ok(new_field) => bundle_field = new_field,
@@ -164,12 +246,14 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         .collect::<Vec<_>>();
 
     let mut component_type = Vec::new();
-    let mut spawn_only_type = Vec::new();
     let mut component_var = Vec::new();
+    let mut component_serialize = Vec::new();
+    let mut component_deserialize_new = Vec::new();
+    let mut component_deserialize_in_place = Vec::new();
+    let mut component_info = Vec::new();
     let mut write_component = Vec::new();
     let mut new_component = Vec::new();
     let mut update_component = Vec::new();
-    let mut filters = Vec::new();
 
     for ((field_type, field_info), field) in
         field_type.iter().zip(field_info.iter()).zip(field.iter())
@@ -178,35 +262,58 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             continue;
         }
 
+        component_type.push(quote! {
+            #field_type
+        });
+        let var = syn::Ident::new(&(String::from("field_") + &field.to_string()), field.span());
+        component_var.push(quote! {
+            #var
+        });
+        let info = syn::Ident::new(&(String::from("info_") + &field.to_string()), field.span());
+        component_info.push(quote! {
+            #info
+        });
+
+        let serialize = syn::Ident::new(
+            &(String::from("__serialize_") + &field.to_string()),
+            field.span(),
+        );
+        component_serialize.push(quote! {
+            #serialize
+        });
+        let deserialize_new = syn::Ident::new(
+            &(String::from("__deserialize_new_") + &field.to_string()),
+            field.span(),
+        );
+        component_deserialize_new.push(quote! {
+            #deserialize_new
+        });
+        let deserialize_in_place = syn::Ident::new(
+            &(String::from("__deserialize_in_place_") + &field.to_string()),
+            field.span(),
+        );
+        component_deserialize_in_place.push(quote! {
+            #deserialize_in_place
+        });
+
         if field_info.send {
-            // TODO: Handle sending optional fields
-
-            let var = syn::Ident::new(&(String::from("field_") + &field.to_string()), field.span());
-            component_var.push(quote! {
-                #var
-            });
-            component_type.push(quote! {
-                #field_type
-            });
-
             let new;
             if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 write_component.push(quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::write_data(&#var, &mut buffer, tick, id_map).unwrap()
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::write_data(&#var, &mut cursor, ctx)?
                 });
                 new = quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(&mut buffer, tick, id_manager)?
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(&mut cursor, ctx)?
                 };
             } else {
                 write_component.push(quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::write_data(&#var, &mut buffer, tick, id_map)
-                        .unwrap()
+                        ::write_data(&#var, &mut cursor, ctx)?
                 });
                 new = quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::read_new(&mut buffer, tick, id_manager)?
+                        ::read_new(&mut cursor, ctx)?
                 };
             }
 
@@ -217,169 +324,77 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             } else if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 update_component.push(quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, &mut buffer, tick, id_manager)?
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, &mut cursor, ctx)?
                 });
             } else {
                 update_component.push(quote! {
-                    <#field_type as #import_path::NetworkedComponent>::read_in_place(#var, &mut buffer, tick, id_manager)?
+                    <#field_type as #import_path::NetworkedComponent>::read_in_place(#var, &mut cursor, ctx)?
                 });
             }
             new_component.push(new);
         } else {
-            if field_info.spawn {
-                spawn_only_type.push(quote! {
-                    #field_type
-                });
-            }
-
-            if !field_info.optional {
-                filters.push(quote! {
-                    #field_type
-                });
-            }
+            write_component.push(quote! {_ = #var});
+            new_component.push(quote! {#field_type::default()});
+            update_component.push(quote! {_ = #var});
         }
     }
 
-    let n_filters = component_type.len() + filters.len();
+    let set_priority = match attributes.priority {
+        Some(priority) => quote! {rule.priority = #priority},
+        None => quote! {},
+    };
 
     let generics = ast.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let struct_name = &ast.ident;
 
     TokenStream::from(quote! {
+        #[allow(clippy::too_many_arguments, clippy::type_complexity, clippy::needless_question_mark)]
+        impl #impl_generics #struct_name #ty_generics #where_clause {#(
+            fn #component_serialize(
+                ctx: &#import_path::SerializeCtx,
+                #component_var: &#component_type,
+                mut cursor: &mut #import_path::Cursor<Vec<u8>>,
+            ) -> #import_path::bincode::Result<()> {
+                #write_component;
+                Ok(())
+            }
+
+            fn #component_deserialize_new(
+                ctx: &mut #import_path::DeserializeCtx,
+                mut cursor: &mut #import_path::Cursor<&[u8]>,
+            ) -> #import_path::bincode::Result<#component_type> {
+                Ok(#new_component)
+            }
+
+            fn #component_deserialize_in_place(
+                _: #import_path::DeserializeFn<#component_type>,
+                ctx: &mut #import_path::DeserializeCtx,
+                #component_var: &mut #component_type,
+                mut cursor: &mut #import_path::Cursor<&[u8]>,
+            ) -> #import_path::bincode::Result<()> {
+                #update_component;
+                Ok(())
+            }
+        )*}
+
         #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-        impl #impl_generics #struct_name #ty_generics #where_clause {
-            fn send_changes<const CHANNEL: u8, Method: #import_path::SendMethod>(
-                ids: &[bevy::ecs::component::ComponentId],
-                owner: Option<u32>,
-                entity: bevy::ecs::world::EntityRef,
-
-                packet_id: u8,
-
-                buffers: &mut #import_path::TakenBuffers,
-                mut buffer: &mut #import_path::WriteBuffer,
-                id_map: &#import_path::IdentifierMap,
-                tick: #import_path::Tick,
-                changed: bevy::ecs::component::Tick,
-            ) {
-                let Some(mut rule) = Method::rule(owner) else {return;};
-
-                buffer.push(packet_id);
-                let mut ids = ids.iter();
-                #({
-                    let #component_var = unsafe{
-                        entity.get_by_id(*ids.next().unwrap())
-                            .unwrap().deref()
-                    };
-                    #write_component;
-                })*
-
-                buffers.send_filtered(#import_path::WriteFilters {
-                    rule,
-                    changed,
-                }, buffer);
-            }
-
-            fn consume(tick: #import_path::Tick, mut buffer: &mut std::io::Cursor<&[u8]>) -> NetworkReadResult<()> {
-                let mut id_manager = &mut IdentifierManager::Ignore;
+        impl #impl_generics #import_path::GroupReplication for #struct_name #ty_generics #where_clause {
+            fn register(
+                world: &mut #import_path::World,
+                replication_fns: &mut #import_path::ReplicationFns
+            ) -> #import_path::ReplicationRule {
                 #(
-                    _ = #new_component;
+                    let #component_info = replication_fns.register_rule_fns(
+                        world,
+                        #import_path::RuleFns::new(Self::#component_serialize, Self::#component_deserialize_new)
+                            .with_in_place(Self::#component_deserialize_in_place),
+                    );
                 )*
-                Ok(())
-            }
 
-            fn spawn(
-                entity: &mut bevy::ecs::world::EntityWorldMut,
-                id_manager: &mut #import_path::IdentifierManager,
-                ident: #import_path::Identity,
-                tick: #import_path::Tick,
-                mut buffer: &mut std::io::Cursor<&[u8]>
-            ) -> NetworkReadResult<()> {
-                entity.insert((
-                    #import_path::LastUpdate::<Self>::new(tick),
-                    #(
-                        #new_component,
-                    )*
-                    #(
-                        #spawn_only_type::default(),
-                    )*
-                ));
-                Ok(())
-            }
-
-            fn apply_changes(
-                entity: &mut bevy::ecs::world::EntityWorldMut,
-                id_manager: &mut #import_path::IdentifierManager,
-                ident: #import_path::Identity,
-                tick: #import_path::Tick,
-                mut buffer: &mut std::io::Cursor<&[u8]>
-            ) -> NetworkReadResult<()> {
-                let bundle_tick = entity.get::<#import_path::LastUpdate<Self>>().map(|t| **t).unwrap_or_default();
-                if bundle_tick >= tick {
-                    return Self::consume(tick, buffer);
-                }
-
-                let auth = entity.get::<#import_path::Authority>().map(|a| *a).unwrap_or_default();
-                if let #import_path::Identity::Client(client_id) = ident {
-                    if !auth.can_claim(client_id) {
-                        return Self::consume(tick, buffer);
-                    }
-                    entity.insert(#import_path::Authority::Client(client_id));
-                }
-                entity.insert(#import_path::LastUpdate::<Self>::new(tick));
-                let entity_tick = entity.get::<#import_path::LastUpdate<()>>().map(|t| **t).unwrap_or_default();
-                if tick > entity_tick {
-                    entity.insert(#import_path::LastUpdate::<()>::new(tick));
-                }
-
-                #(
-                    match entity.get_mut::<#import_path::Remote<#component_type>>() {
-                        Some(mut remote) => {
-                            let mut #component_var = remote.update(tick);
-                            #update_component;
-                        },
-                        None => {
-                            match entity.get_mut::<#component_type>() {
-                                Some(mut #component_var) => {let #component_var = &mut *#component_var; #update_component}
-                                None => {
-                                    entity.insert(#new_component);
-                                }
-                            }
-                        }
-                    }
-                )*
-                #(
-                    match entity.get::<#spawn_only_type>() {
-                        Some(_) => {}
-                        None => {entity.insert(#spawn_only_type::default());}
-                    }
-                )*
-                Ok(())
-            }
-        }
-
-        impl #impl_generics #import_path::NetworkedBundle for #struct_name #ty_generics #where_clause {
-            fn get_component_ids(world: &mut World) -> Vec<bevy::ecs::component::ComponentId> {
-                let mut list = Vec::with_capacity(#n_filters);
-                #( list.push(world.init_component::<#component_type>()); )*
-                #( list.push(world.init_component::<#filters>()); )*
-                list
-            }
-
-            fn serializer<const CHANNEL: u8, Method: #import_path::SendMethod>() -> #import_path::SendChangeFn {
-                Self::send_changes::<CHANNEL, Method>
-            }
-
-            fn updater() -> #import_path::ApplyEntityChangeFn {
-                Self::apply_changes
-            }
-
-            fn spawner() -> #import_path::ApplyEntityChangeFn {
-                Self::spawn
-            }
-
-            fn consumer() -> #import_path::ConsumeFn {
-                Self::consume
+                let mut rule = #import_path::ReplicationRule::new(vec![#(#component_info, )*]);
+                #set_priority;
+                rule
             }
         }
     })

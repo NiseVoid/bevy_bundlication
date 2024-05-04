@@ -1,8 +1,25 @@
-use bevy::{ecs::schedule::ScheduleLabel, prelude::*, utils::intern::Interned};
+use bevy::prelude::*;
+use bevy_replicon::core::replicon_tick::RepliconTick;
+use serde::{Deserialize, Serialize};
 
 /// The current Tick of the networked simulation
-#[derive(Resource, Clone, Copy, Deref, Default, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[rustfmt::skip]
+#[derive(Resource,
+    Clone, Copy,
+    Deref, DerefMut,
+    Default, Debug,
+    PartialEq, Eq,
+    PartialOrd, Ord,
+    Hash,
+    Serialize, Deserialize
+)]
 pub struct Tick(pub u32);
+
+impl From<RepliconTick> for Tick {
+    fn from(value: RepliconTick) -> Self {
+        Tick(value.get())
+    }
+}
 
 use std::ops::{Add, Sub};
 
@@ -28,23 +45,4 @@ impl Sub<u32> for Tick {
     fn sub(self, rhs: u32) -> Self::Output {
         Self(self.0 - rhs)
     }
-}
-
-/// The system set in which the Tick is incremented, you should schedule your logic after this
-#[derive(SystemSet, Clone, PartialEq, Eq, Debug, Hash)]
-pub struct TickSet;
-
-pub struct TickPlugin {
-    pub schedule: Interned<dyn ScheduleLabel>,
-}
-
-impl Plugin for TickPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<Tick>()
-            .add_systems(self.schedule, increment_tick.in_set(TickSet));
-    }
-}
-
-fn increment_tick(mut tick: ResMut<Tick>) {
-    *tick = *tick + 1;
 }
