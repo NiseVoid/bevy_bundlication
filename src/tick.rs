@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_replicon::core::replicon_tick::RepliconTick;
+use bevy_replicon::server::replicon_tick::RepliconTick;
 use serde::{Deserialize, Serialize};
 
 /// The current Tick of the networked simulation

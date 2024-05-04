@@ -3,10 +3,12 @@ use bevy_bundlication::prelude::*;
 use std::io::{Read, Write};
 
 use bevy::{prelude::*, reflect::TypePath};
-use bevy_replicon::core::{
-    replication_fns::{test_fns::TestFnsEntityExt, ReplicationFns},
-    replication_rules::GroupReplication,
-    replicon_tick::RepliconTick,
+use bevy_replicon::{
+    core::{
+        replication_fns::{test_fns::TestFnsEntityExt, ReplicationFns},
+        replication_rules::GroupReplication,
+    },
+    server::replicon_tick::RepliconTick,
 };
 use bincode::Result;
 use serde::{Deserialize, Serialize};
