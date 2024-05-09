@@ -19,46 +19,16 @@ Bundles can be registered to bevy_replicon using `replicate_group::<Bundle>()`.
 ```rust
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use bevy_bundlication::prelude::*;
-use serde::{Serialize, Deserialize};
-
-#[derive(Component, Default)]
-pub struct Player(u128);
-
-#[derive(Component, Serialize, Deserialize, Clone)]
-pub struct Speed(f32);
-
-#[derive(Serialize, Deserialize)]
-pub struct JustTranslation(Vec3);
-
-impl NetworkedWrapper<Transform> for JustTranslation {
-    fn write_data(
-        from: &Transform,
-        w: impl std::io::Write,
-        ctx: &SerializeCtx,
-    ) -> BincodeResult<()> {
-        serialize(w, &from.translation)?;
-        Ok(())
-    }
-
-    fn read_new(
-        r: impl std::io::Read,
-        ctx: &mut DeserializeCtx, // This context can be used for entity mapping or check the message tick
-    ) -> BincodeResult<Transform> {
-        let translation: Vec3 = deserialize(r)?;
-        Ok(Transform::from_translation(translation))
-    }
-}
 
 #[derive(NetworkedBundle)]
 pub struct PlayerPositionBundle {
-    // This content of this field doesn't get sent, but it will get spawned (with the default value)
+    // The content of this field doesn't get sent, and it will be received as the default value,
+    // it therefor requires neither Serialize/Deserialize nor NetworkedComponent
     #[bundlication(no_send)]
     pub player: Player,
     // This component is sent and spawned as is
     pub speed: Speed,
-    // This components is queried and spawned as Transform, but sent according to
-    // the logic of JustTranslation
+    // We replicate Transform, but it is serialized/deserialized using the logic of JustTranslation
     #[bundlication(as = JustTranslation)]
     pub translation: Transform,
     // If we also use this as a bundle and have fields we don't want replicon to consider, we can
@@ -71,8 +41,37 @@ pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
-        // We can now register this bundle to bevy_replicon
+        // To replicate the bundle, we register our bundle to bevy_replicon
         app.replicate_group::<PlayerPositionBundle>();
+    }
+}
+
+use bevy_bundlication::prelude::*;
+use serde::{Serialize, Deserialize};
+
+// We need Default on Player because we use the no_send attribute
+#[derive(Component, Default)]
+pub struct Player(u128);
+
+// Speed derives all required traits for the NetworkedBundle blanket impl
+#[derive(Component, Serialize, Deserialize)]
+pub struct Speed(f32);
+
+// We define a type to network a type we don't own in a different way than its default behavior.
+// This can also be used to network components without Serialize/Deserialize
+// In this case we only network the translation part of Transform
+#[derive(Serialize, Deserialize)]
+pub struct JustTranslation(Vec3);
+
+impl NetworkedWrapper<Transform> for JustTranslation {
+    fn write_data(from: &Transform, w: impl std::io::Write, _: &SerializeCtx) -> BincodeResult<()> {
+        serialize(w, &from.translation)?;
+        Ok(())
+    }
+
+    fn read_new(r: impl std::io::Read, _: &mut DeserializeCtx) -> BincodeResult<Transform> {
+        let translation: Vec3 = deserialize(r)?;
+        Ok(Transform::from_translation(translation))
     }
 }
 ```
