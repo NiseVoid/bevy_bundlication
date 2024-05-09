@@ -1,16 +1,4 @@
-//! Network replication based on bundles.
-//!
-//! Replication logic can be added to your app using [`AppNetworkingExt`].
-//!
-//! You can register bundles with [`AppNetworkingExt::register_bundle`], if the direction matches the
-//! current app, any entity matching this bundle with an [`Identifier`] will then be sent over the network.
-//! If the App is a client, it will only send packets if we have or can claim [`Authority`].
-//! Direct updating of components can be avoided by adding the [`Remote`] on the entity, when this
-//! component is around values will be stored there instead of the real field.
-//!
-//! You can register events with [`AppNetworkingExt::register_event`]. Events will be sent if the
-//! direction matches, on the receiving side events are wrapped in [`NetworkEvent`]
-
+#![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
@@ -62,7 +50,7 @@ pub trait NetworkedComponent: Sized {
     /// Write the component to the network, using the [`SerializeCtx`] to convert any necessary values
     fn write_data(&self, w: impl Write, ctx: &SerializeCtx) -> BincodeResult<()>;
 
-    /// Read the component from the network, using the [`Context`] to convert any necessary values
+    /// Read the component from the network, using the [`DeserializeCtx`] to convert any necessary values
     fn read_new(r: impl Read, ctx: &mut DeserializeCtx) -> BincodeResult<Self>;
 
     /// Read the component in-place from the network, this can be used to write directly to
@@ -86,15 +74,13 @@ impl<T: Component + Serialize + for<'a> Deserialize<'a>> NetworkedComponent for 
 /// A trait that allows wrapping a component as another type for bevy_bundlication. Useful when working
 /// with components from bevy itself or 3rd party plugins
 pub trait NetworkedWrapper<From: Component> {
-    /// Write the component to the network, using the current [`Tick`] and [`IdentifierMap`] to
-    /// convert any necessary values
+    /// Write the component to the network, using the [`SerializeCtx`] to convert any necessary values
     fn write_data(from: &From, w: impl Write, ctx: &SerializeCtx) -> BincodeResult<()>;
 
-    /// Read the component from the network, using the [`Tick`] of the packet it was contained
-    /// in and the [`ClientMapper`] to convert any necessary values
+    /// Read the component from the network, using [`DeserializeCtx`] to convert any necessary values
     fn read_new(r: impl Read, ctx: &mut DeserializeCtx) -> BincodeResult<From>;
 
-    /// Read the component in-place from the network, this can be used to write directly to
+    /// Read the component in-place from the network, avoiding creation of a new value
     fn read_in_place(from: &mut From, r: impl Read, ctx: &mut DeserializeCtx) -> BincodeResult<()> {
         *from = Self::read_new(r, ctx)?;
         Ok(())

@@ -1,28 +1,29 @@
 # bevy_bundlication
 
 Network replication for bevy based on a bundle pattern.
+Replication group rules for [bevy_replicon](https://github.com/projectharmonia/bevy_replicon) using a bundle-like API.
 
 ## Goals
 
-- High performance replication
-- Minimizing bandwidth overhead
-- Features to synchronize predicted and remote entities
-    - Rollback is out of scope
-- Support well-scoped client authority
-
-## Non-goals
-
-- Being the easiest crate for less performance and bandwidth critical uses
+- Simplify the definition of replication groups
+- Simplify bandwidth optimization
 
 ## Getting started
 
-bevy_bundlication works with a pattern similar to a Bundle from bevy. Anything matching the bundle, with the required component to get picked up by networking (Identifier) is sent according to the rules it was registered with. Each field needs to implement [`bevy::ecs::component::Component`](https://docs.rs/bevy/latest/bevy/ecs/component/trait.Component.html), [`serde::Serialze`](https://docs.rs/serde/latest/serde/trait.Serialize.html), [`serde::Deserialize`](https://docs.rs/serde/latest/serde/trait.Deserialize.html) and `Clone` (for now). The bundle also needs to derive `Bundle` (for now) and `TypePath`.
+bevy_bundlication works with a pattern similar to a Bundle from bevy. Anything matching the bundle gets networked.
+Each field needs to implement `NetworkedComponent`, this can be done manually or trough a blanket impl on types that have [`Component`](https://docs.rs/bevy/latest/bevy/ecs/component/trait.Component.html), [`Serialze`](https://docs.rs/serde/latest/serde/trait.Serialize.html) and [`Deserialize`](https://docs.rs/serde/latest/serde/trait.Deserialize.html).
+For types where the blanket impl causes conflicts, the `#[bundlication(as = Wrapper)]` attribute can be used where `Wrapper` is a type that impletements `NetworkedWrapper<YourType>`.
 
-Bundles need to be registered to the app, and can have extra rules on fields.
+Bundles can be registered to bevy_replicon using `replicate_group::<Bundle>()`.
 
 ```rust
+use bevy::prelude::*;
+use bevy_replicon::prelude::*;
+use bevy_bundlication::prelude::*;
+use serde::{Serialize, Deserialize};
+
 #[derive(Component, Default)]
-pub struct Player;
+pub struct Player(u128);
 
 #[derive(Component, Serialize, Deserialize, Clone)]
 pub struct Speed(f32);
@@ -33,62 +34,48 @@ pub struct JustTranslation(Vec3);
 impl NetworkedWrapper<Transform> for JustTranslation {
     fn write_data(
         from: &Transform,
-        writer: impl Write,
-        tick: Tick,
-        map: &IdentifierMap,
-    ) -> IdentifierResult<()> {
-        serialize(writer, from.translation).unwrap();
+        w: impl std::io::Write,
+        ctx: &SerializeCtx,
+    ) -> BincodeResult<()> {
+        serialize(w, &from.translation)?;
         Ok(())
     }
 
     fn read_new(
-        reader: impl Read,
-        tick: Tick,
-        map: &mut IdentifierManager,
-    ) -> IdentifierResult<Transform> {
-        let translation: Vec3 = deserialize(reader).unwrap();
+        r: impl std::io::Read,
+        ctx: &mut DeserializeCtx, // This context can be used for entity mapping or check the message tick
+    ) -> BincodeResult<Transform> {
+        let translation: Vec3 = deserialize(r)?;
         Ok(Transform::from_translation(translation))
     }
 }
 
-#[derive(NetworkedBundle, Bundle, TypePath)]
+#[derive(NetworkedBundle)]
 pub struct PlayerPositionBundle {
-    // This field doesn't get sent, but it will get spawned (with the default value)
-    #[networked(no_send)]
+    // This content of this field doesn't get sent, but it will get spawned (with the default value)
+    #[bundlication(no_send)]
     pub player: Player,
-    // This components is queried and spawned as Transform, but sent according to
-    // the logic of JustTranslation
-    #[networked(as = JustTranslation)]
-    pub translation: Transform,
     // This component is sent and spawned as is
     pub speed: Speed,
+    // This components is queried and spawned as Transform, but sent according to
+    // the logic of JustTranslation
+    #[bundlication(as = JustTranslation)]
+    pub translation: Transform,
+    // If we also use this as a bundle and have fields we don't want replicon to consider, we can
+    // add the skip attribute
+    #[bundlication(skip)]
+    pub skipped: GlobalTransform,
 }
 
 pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
-        // We register the bundle to be sent from the server to all clients.
-        // These registers need to be identical on both the client and server.
-        // but don't worry, the client won't try to send server data,
-        // nor would the server accept it
-        app.register_bundle::<ServerToAll, PlayerPositionBundle, 0>();
-
-        // Other rules for how a bundle is sent are:
-        // - ServerToOwner and ServerToObserver, which both check the Identifier (or Owner, if it exists)
-        // - ClientToServer, for client authority which requires an Authority::Free or
-        //      matching Authority::Client(x) on the client
+        // We can now register this bundle to bevy_replicon
+        app.replicate_group::<PlayerPositionBundle>();
     }
 }
 ```
-
-## Future plans
-
-- More optimizations
-- Getting rid of Identifier in favor of a as-needed system to match predicted and real entities
-- Add per-entity per-bundle client authority control
-- Client-side packet buffering (to reduce jitter and support accurate interpolation)
-- Per-entity visibility control
 
 ## License
 
