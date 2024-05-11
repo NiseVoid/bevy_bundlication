@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_replicon::server::replicon_tick::RepliconTick;
+use bevy_replicon::core::replicon_tick::RepliconTick;
 use serde::{Deserialize, Serialize};
 
 /// The current Tick of the networked simulation
@@ -18,6 +18,12 @@ pub struct Tick(pub u32);
 impl From<RepliconTick> for Tick {
     fn from(value: RepliconTick) -> Self {
         Tick(value.get())
+    }
+}
+
+impl From<Tick> for RepliconTick {
+    fn from(value: Tick) -> Self {
+        RepliconTick::new(*value)
     }
 }
 
