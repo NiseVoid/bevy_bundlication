@@ -1,4 +1,4 @@
-use bevy_macro_utils::get_named_struct_fields;
+use bevy_macro_utils::get_struct_fields;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
@@ -212,8 +212,8 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         }
     }
 
-    let named_fields = match get_named_struct_fields(&ast.data) {
-        Ok(fields) => &fields.named,
+    let named_fields = match get_struct_fields(&ast.data) {
+        Ok(fields) => fields,
         Err(e) => return e.into_compile_error().into(),
     };
 
