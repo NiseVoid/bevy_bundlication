@@ -4,7 +4,7 @@ use std::io::{Read, Write};
 
 use bevy::{prelude::*, reflect::TypePath};
 use bevy_replicon::core::{
-    replication_fns::{test_fns::TestFnsEntityExt, ReplicationFns},
+    replication_registry::{test_fns::TestFnsEntityExt, ReplicationRegistry},
     replication_rules::GroupReplication,
     replicon_tick::RepliconTick,
 };
@@ -53,7 +53,7 @@ fn test_attributes() {
     let mut app = App::new();
     app.add_plugins(bevy_replicon::RepliconPlugins);
 
-    let mut replication_fns = ReplicationFns::default();
+    let mut replication_fns = ReplicationRegistry::default();
     let rule = BundleWithAttributes::register(&mut app.world, &mut replication_fns);
     app.insert_resource(replication_fns);
 

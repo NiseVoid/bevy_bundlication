@@ -382,7 +382,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         impl #impl_generics #import_path::GroupReplication for #struct_name #ty_generics #where_clause {
             fn register(
                 world: &mut #import_path::World,
-                replication_fns: &mut #import_path::ReplicationFns
+                replication_fns: &mut #import_path::ReplicationRegistry
             ) -> #import_path::ReplicationRule {
                 #(
                     let #component_info = replication_fns.register_rule_fns(

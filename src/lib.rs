@@ -11,7 +11,7 @@ pub mod prelude {
     pub use super::BincodeResult;
     pub use crate::{deserialize, serialize, tick::Tick, NetworkedComponent, NetworkedWrapper};
     pub use bevy_bundlication_macros::NetworkedBundle;
-    pub use bevy_replicon::core::replication_fns::ctx::{SerializeCtx, WriteCtx as DeserializeCtx};
+    pub use bevy_replicon::core::ctx::{SerializeCtx, WriteCtx as DeserializeCtx};
     pub use bincode::{Error as BincodeError, ErrorKind as BincodeErrorKind};
 }
 
@@ -21,10 +21,10 @@ pub mod macro_export {
     pub use crate::{deserialize, serialize, tick::Tick, NetworkedComponent, NetworkedWrapper};
     pub use bevy::ecs::world::World;
     pub use bevy_replicon::core::{
-        replication_fns::{
-            ctx::{SerializeCtx, WriteCtx as DeserializeCtx},
+        ctx::{SerializeCtx, WriteCtx as DeserializeCtx},
+        replication_registry::{
             rule_fns::{DeserializeFn, RuleFns},
-            ReplicationFns,
+            ReplicationRegistry,
         },
         replication_rules::{GroupReplication, ReplicationRule},
     };
