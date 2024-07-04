@@ -54,14 +54,14 @@ fn test_attributes() {
     app.add_plugins(bevy_replicon::RepliconPlugins);
 
     let mut replication_fns = ReplicationRegistry::default();
-    let rule = BundleWithAttributes::register(&mut app.world, &mut replication_fns);
+    let rule = BundleWithAttributes::register(app.world_mut(), &mut replication_fns);
     app.insert_resource(replication_fns);
 
     assert_eq!(17, rule.priority);
     let components = rule.components;
 
     let tick = RepliconTick::default();
-    let mut entity = app.world.spawn_empty();
+    let mut entity = app.world_mut().spawn_empty();
 
     // Test the functions for Transform (as Position)
 
@@ -76,7 +76,10 @@ fn test_attributes() {
     let mut transform = entity.get_mut::<Transform>().unwrap();
     transform.translation += Vec3::ONE;
     transform.rotation = Quat::from_rotation_z(1.5);
-    assert_eq!(entity.serialize(components[0]), vec![2, 3, 4]);
+    assert_eq!(
+        entity.serialize(components[0], RepliconTick::new(0)),
+        vec![2, 3, 4]
+    );
 
     // Test the function for NotSent
 
@@ -86,5 +89,8 @@ fn test_attributes() {
 
     // Test NotSent's serialize output
     *entity.get_mut::<NotSent>().unwrap() = NotSent(12);
-    assert_eq!(entity.serialize(components[1]), vec![]);
+    assert_eq!(
+        entity.serialize(components[1], RepliconTick::new(0)),
+        vec![]
+    );
 }
