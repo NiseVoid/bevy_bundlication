@@ -3,13 +3,11 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
-mod tick;
-
 pub mod prelude {
     //! The prelude of the crate, contains everything necessary to get started with this crate
 
     pub use super::BincodeResult;
-    pub use crate::{deserialize, serialize, tick::Tick, NetworkedComponent, NetworkedWrapper};
+    pub use crate::{deserialize, serialize, NetworkedComponent, NetworkedWrapper};
     pub use bevy_bundlication_macros::NetworkedBundle;
     pub use bevy_replicon::core::ctx::{SerializeCtx, WriteCtx as DeserializeCtx};
     pub use bincode::{Error as BincodeError, ErrorKind as BincodeErrorKind};
@@ -18,7 +16,7 @@ pub mod prelude {
 pub mod macro_export {
     //! A module with exports used by the macro
 
-    pub use crate::{deserialize, serialize, tick::Tick, NetworkedComponent, NetworkedWrapper};
+    pub use crate::{deserialize, serialize, NetworkedComponent, NetworkedWrapper};
     pub use bevy::ecs::world::World;
     pub use bevy_replicon::core::{
         ctx::{SerializeCtx, WriteCtx as DeserializeCtx},
