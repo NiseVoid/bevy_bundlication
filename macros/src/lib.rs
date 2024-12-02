@@ -354,7 +354,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             fn #component_serialize(
                 ctx: &#import_path::SerializeCtx,
                 #component_var: &#component_type,
-                mut cursor: &mut #import_path::Cursor<Vec<u8>>,
+                mut cursor: &mut Vec<u8>,
             ) -> #import_path::bincode::Result<()> {
                 #write_component;
                 Ok(())
