@@ -10,14 +10,13 @@ use bevy_replicon::core::{
     },
     replicon_tick::RepliconTick,
 };
-use bincode::Result;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Position(u8, u8, u8);
 
 impl NetworkedWrapper<Transform> for Position {
-    fn write_data(from: &Transform, w: impl Write, _: &SerializeCtx) -> Result<()> {
+    fn write_data(from: &Transform, w: impl Write, _: &SerializeCtx) -> PostcardResult<()> {
         serialize(
             w,
             &Self(
@@ -29,7 +28,7 @@ impl NetworkedWrapper<Transform> for Position {
         .unwrap();
         Ok(())
     }
-    fn read_new(r: impl Read, _: &mut DeserializeCtx) -> Result<Transform> {
+    fn read_new(r: impl Read, _: &mut DeserializeCtx) -> PostcardResult<Transform> {
         let pos: Self = deserialize(r)?;
         Ok(Transform {
             translation: Vec3::new(pos.0 as f32, pos.1 as f32, pos.2 as f32),
@@ -68,7 +67,7 @@ fn test_attributes() {
     // Test the functions for Transform (as Position)
 
     // Test if the Transform write function behaves correctly
-    entity.apply_write(&[1, 2, 3], components[0].1, tick);
+    entity.apply_write(vec![1, 2, 3], components[0].1, tick);
     assert_eq!(
         entity.get::<Transform>(),
         Some(&Transform::from_xyz(1., 2., 3.))
@@ -86,7 +85,7 @@ fn test_attributes() {
     // Test the function for NotSent
 
     // Test if the NotSent write function spawns from no data
-    entity.apply_write(&[], components[1].1, tick);
+    entity.apply_write(vec![], components[1].1, tick);
     assert_eq!(entity.get::<NotSent>(), Some(&NotSent::default()));
 
     // Test NotSent's serialize output

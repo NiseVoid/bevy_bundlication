@@ -64,12 +64,12 @@ pub struct Speed(f32);
 pub struct JustTranslation(Vec3);
 
 impl NetworkedWrapper<Transform> for JustTranslation {
-    fn write_data(from: &Transform, w: impl std::io::Write, _: &SerializeCtx) -> BincodeResult<()> {
+    fn write_data(from: &Transform, w: impl std::io::Write, _: &SerializeCtx) -> PostcardResult<()> {
         serialize(w, &from.translation)?;
         Ok(())
     }
 
-    fn read_new(r: impl std::io::Read, _: &mut DeserializeCtx) -> BincodeResult<Transform> {
+    fn read_new(r: impl std::io::Read, _: &mut DeserializeCtx) -> PostcardResult<Transform> {
         let translation: Vec3 = deserialize(r)?;
         Ok(Transform::from_translation(translation))
     }

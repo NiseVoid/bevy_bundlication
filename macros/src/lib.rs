@@ -12,14 +12,9 @@ fn import_path() -> syn::Path {
     .unwrap()
 }
 
+#[derive(Default)]
 struct BundleAttributes {
     priority: Option<proc_macro2::Literal>,
-}
-
-impl Default for BundleAttributes {
-    fn default() -> Self {
-        Self { priority: None }
-    }
 }
 
 impl syn::parse::Parser for BundleAttributes {
@@ -301,19 +296,19 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 write_component.push(quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::write_data(&#var, &mut cursor, ctx)?
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::write_data(&#var, cursor, ctx)?
                 });
                 new = quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(&mut cursor, ctx)?
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(AsRef::<[u8]>::as_ref(cursor), ctx)?
                 };
             } else {
                 write_component.push(quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::write_data(&#var, &mut cursor, ctx)?
+                        ::write_data(&#var, cursor, ctx)?
                 });
                 new = quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::read_new(&mut cursor, ctx)?
+                        ::read_new(AsRef::<[u8]>::as_ref(cursor), ctx)?
                 };
             }
 
@@ -324,11 +319,11 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             } else if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 update_component.push(quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, &mut cursor, ctx)?
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, AsRef::<[u8]>::as_ref(cursor), ctx)?
                 });
             } else {
                 update_component.push(quote! {
-                    <#field_type as #import_path::NetworkedComponent>::read_in_place(#var, &mut cursor, ctx)?
+                    <#field_type as #import_path::NetworkedComponent>::read_in_place(#var, AsRef::<[u8]>::as_ref(cursor), ctx)?
                 });
             }
             new_component.push(new);
@@ -354,16 +349,16 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             fn #component_serialize(
                 ctx: &#import_path::SerializeCtx,
                 #component_var: &#component_type,
-                mut cursor: &mut Vec<u8>,
-            ) -> #import_path::bincode::Result<()> {
+                cursor: &mut Vec<u8>,
+            ) -> #import_path::postcard::Result<()> {
                 #write_component;
                 Ok(())
             }
 
             fn #component_deserialize_new(
                 ctx: &mut #import_path::DeserializeCtx,
-                mut cursor: &mut #import_path::Cursor<&[u8]>,
-            ) -> #import_path::bincode::Result<#component_type> {
+                mut cursor: &mut #import_path::Bytes,
+            ) -> #import_path::postcard::Result<#component_type> {
                 Ok(#new_component)
             }
 
@@ -371,8 +366,8 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 _: #import_path::DeserializeFn<#component_type>,
                 ctx: &mut #import_path::DeserializeCtx,
                 #component_var: &mut #component_type,
-                mut cursor: &mut #import_path::Cursor<&[u8]>,
-            ) -> #import_path::bincode::Result<()> {
+                mut cursor: &mut #import_path::Bytes,
+            ) -> #import_path::postcard::Result<()> {
                 #update_component;
                 Ok(())
             }
