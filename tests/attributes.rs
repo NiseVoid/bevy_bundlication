@@ -3,7 +3,7 @@ use bevy_bundlication::prelude::*;
 use std::io::{Read, Write};
 
 use bevy::{prelude::*, reflect::TypePath};
-use bevy_replicon::core::{
+use bevy_replicon::shared::{
     replication::{
         replication_registry::{test_fns::TestFnsEntityExt, ReplicationRegistry},
         replication_rules::GroupReplication,

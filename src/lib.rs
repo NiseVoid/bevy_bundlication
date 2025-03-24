@@ -9,7 +9,7 @@ pub mod prelude {
     pub use super::PostcardResult;
     pub use crate::{deserialize, serialize, NetworkedComponent, NetworkedWrapper};
     pub use bevy_bundlication_macros::NetworkedBundle;
-    pub use bevy_replicon::core::replication::replication_registry::ctx::{
+    pub use bevy_replicon::shared::replication::replication_registry::ctx::{
         SerializeCtx, WriteCtx as DeserializeCtx,
     };
     pub use postcard::Error as PostcardError;
@@ -21,7 +21,7 @@ pub mod macro_export {
     pub use crate::{deserialize, serialize, NetworkedComponent, NetworkedWrapper};
     pub use bevy::ecs::world::World;
     pub use bevy_replicon::bytes::Bytes;
-    pub use bevy_replicon::core::replication::{
+    pub use bevy_replicon::shared::replication::{
         replication_registry::{
             ctx::{SerializeCtx, WriteCtx as DeserializeCtx},
             rule_fns::{DeserializeFn, RuleFns},

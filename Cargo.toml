@@ -1,5 +1,5 @@
 [workspace]
-package.version = "0.10.0"
+package.version = "0.11.0"
 package.license = "MIT OR Apache-2.0"
 package.repository = "https://github.com/NiseVoid/bevy_bundlication"
 
@@ -25,16 +25,16 @@ repository.workspace = true
 edition = "2021"
 
 [dependencies]
-bevy_bundlication_macros = {version = "0.10.0", path = "macros"}
+bevy_bundlication_macros = {version = "0.11.0", path = "macros"}
 
 bevy = { version = "0.15", default-features=false }
-bevy_replicon = { version = "0.31", default-features=false }
+bevy_replicon = { version = "0.32", default-features=false }
 
 postcard = {version = "1.1", features = ["use-std"]}
 serde = "1.0"
 
 [dev-dependencies]
-bevy_replicon = { version = "0.31", default-features=false, features = ["server", "client"] }
+bevy_replicon = { version = "0.32", default-features=false, features = ["server", "client"] }
 
 [profile.release]
 codegen-units = 1
