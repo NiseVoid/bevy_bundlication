@@ -1,7 +1,7 @@
 use bevy_macro_utils::get_struct_fields;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 fn import_path() -> syn::Path {
     syn::parse(
@@ -350,7 +350,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 ctx: &#import_path::SerializeCtx,
                 #component_var: &#component_type,
                 cursor: &mut Vec<u8>,
-            ) -> #import_path::postcard::Result<()> {
+            ) -> #import_path::BevyResult<()> {
                 #write_component;
                 Ok(())
             }
@@ -358,7 +358,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             fn #component_deserialize_new(
                 ctx: &mut #import_path::DeserializeCtx,
                 mut cursor: &mut #import_path::Bytes,
-            ) -> #import_path::postcard::Result<#component_type> {
+            ) -> #import_path::BevyResult<#component_type> {
                 Ok(#new_component)
             }
 
@@ -367,7 +367,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 ctx: &mut #import_path::DeserializeCtx,
                 #component_var: &mut #component_type,
                 mut cursor: &mut #import_path::Bytes,
-            ) -> #import_path::postcard::Result<()> {
+            ) -> #import_path::BevyResult<()> {
                 #update_component;
                 Ok(())
             }

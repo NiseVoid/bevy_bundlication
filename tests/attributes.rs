@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use bevy::{prelude::*, reflect::TypePath};
 use bevy_replicon::shared::{
     replication::{
-        replication_registry::{test_fns::TestFnsEntityExt, ReplicationRegistry},
+        replication_registry::{ReplicationRegistry, test_fns::TestFnsEntityExt},
         replication_rules::GroupReplication,
     },
     replicon_tick::RepliconTick,
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 pub struct Position(u8, u8, u8);
 
 impl NetworkedWrapper<Transform> for Position {
-    fn write_data(from: &Transform, w: impl Write, _: &SerializeCtx) -> PostcardResult<()> {
+    fn write_data(from: &Transform, w: impl Write, _: &SerializeCtx) -> Result<()> {
         serialize(
             w,
             &Self(
@@ -28,7 +28,7 @@ impl NetworkedWrapper<Transform> for Position {
         .unwrap();
         Ok(())
     }
-    fn read_new(r: impl Read, _: &mut DeserializeCtx) -> PostcardResult<Transform> {
+    fn read_new(r: impl Read, _: &mut DeserializeCtx) -> Result<Transform> {
         let pos: Self = deserialize(r)?;
         Ok(Transform {
             translation: Vec3::new(pos.0 as f32, pos.1 as f32, pos.2 as f32),

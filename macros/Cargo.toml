@@ -6,13 +6,13 @@ version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-edition = "2021"
+edition = "2024"
 
 [lib]
 proc-macro = true
 
 [dependencies]
-bevy_macro_utils = "0.15"
+bevy_macro_utils = "0.16"
 
 syn = "2.0"
 quote = "1.0"
