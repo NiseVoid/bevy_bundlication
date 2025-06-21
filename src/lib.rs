@@ -18,14 +18,14 @@ pub mod macro_export {
 
     pub use crate::{BevyResult, NetworkedComponent, NetworkedWrapper, deserialize, serialize};
     pub use bevy::ecs::world::World;
-    pub use bevy_replicon::bytes::Bytes;
+    pub use bevy_replicon::bytes::{Buf, Bytes};
     pub use bevy_replicon::shared::replication::{
         replication_registry::{
             ReplicationRegistry,
             ctx::{SerializeCtx, WriteCtx as DeserializeCtx},
             rule_fns::{DeserializeFn, RuleFns},
         },
-        replication_rules::{GroupReplication, ReplicationRule},
+        replication_rules::{ComponentRule, ReplicationBundle, ReplicationRule, SendRate},
     };
     pub use postcard;
 }

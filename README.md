@@ -14,7 +14,7 @@ bevy_bundlication works with a pattern similar to a Bundle from bevy. Anything m
 Each field needs to implement `NetworkedComponent`, this can be done manually or trough a blanket impl on types that have [`Component`](https://docs.rs/bevy/latest/bevy/ecs/component/trait.Component.html), [`Serialze`](https://docs.rs/serde/latest/serde/trait.Serialize.html) and [`Deserialize`](https://docs.rs/serde/latest/serde/trait.Deserialize.html).
 For types where the blanket impl causes conflicts, the `#[bundlication(as = Wrapper)]` attribute can be used where `Wrapper` is a type that impletements `NetworkedWrapper<YourType>`.
 
-Bundles can be registered to bevy_replicon using `replicate_group::<Bundle>()`.
+Bundles can be registered to bevy_replicon using `replicate_bundle::<Bundle>()`.
 
 ```rust
 use bevy::prelude::*;
@@ -24,7 +24,7 @@ use bevy_replicon::prelude::*;
 pub struct PlayerPositionBundle {
     // The content of this field doesn't get sent, and it will be received as the default value,
     // it therefor requires neither Serialize/Deserialize nor NetworkedComponent
-    #[bundlication(no_send)]
+    #[bundlication(no_send, rate=Once)]
     pub player: Player,
     // This component is sent and spawned as is
     pub speed: Speed,
@@ -42,7 +42,7 @@ pub struct MovementPlugin;
 impl Plugin for MovementPlugin {
     fn build(&self, app: &mut App) {
         // To replicate the bundle, we register our bundle to bevy_replicon
-        app.replicate_group::<PlayerPositionBundle>();
+        app.replicate_bundle::<PlayerPositionBundle>();
     }
 }
 

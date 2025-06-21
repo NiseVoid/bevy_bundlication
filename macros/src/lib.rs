@@ -61,6 +61,7 @@ struct BundleField {
     send: bool,
     networked_as: Option<syn::Ident>,
     update_with: Option<syn::Ident>,
+    rate: syn::Ident,
 }
 
 impl Default for BundleField {
@@ -70,6 +71,7 @@ impl Default for BundleField {
             send: true,
             networked_as: None,
             update_with: None,
+            rate: syn::Ident::new(&String::from("EveryTick"), proc_macro2::Span::call_site()),
         }
     }
 }
@@ -150,6 +152,8 @@ impl syn::parse::Parser for BundleField {
                         self.networked_as = Some(parse_ident(&mut token_iter, ident)?);
                     } else if ident == BUNDLICATION_ATTRIBUTE_UPDATE_NAME {
                         self.update_with = Some(parse_ident(&mut token_iter, ident)?);
+                    } else if ident == BUNDLICATION_ATTRIBUTE_RATE_NAME {
+                        self.rate = parse_ident(&mut token_iter, ident)?;
                     } else {
                         return Err(syn::Error::new(ident.span(), "unknown ident"));
                     }
@@ -185,6 +189,7 @@ const BUNDLICATION_ATTRIBUTE_SKIP_NAME: &str = "skip";
 const BUNDLICATION_ATTRIBUTE_NO_SEND_NAME: &str = "no_send";
 const BUNDLICATION_ATTRIBUTE_AS_NAME: &str = "as";
 const BUNDLICATION_ATTRIBUTE_UPDATE_NAME: &str = "update";
+const BUNDLICATION_ATTRIBUTE_RATE_NAME: &str = "rate";
 
 // TODO: Add option for alternative default function for non-sent fields
 
@@ -246,6 +251,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
     let mut component_deserialize_new = Vec::new();
     let mut component_deserialize_in_place = Vec::new();
     let mut component_info = Vec::new();
+    let mut component_rate = Vec::new();
     let mut write_component = Vec::new();
     let mut new_component = Vec::new();
     let mut update_component = Vec::new();
@@ -268,6 +274,8 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         component_info.push(quote! {
             #info
         });
+        let rate = field_info.rate.clone();
+        component_rate.push(quote! {#import_path::SendRate::#rate});
 
         let serialize = syn::Ident::new(
             &(String::from("__serialize_") + &field.to_string()),
@@ -299,7 +307,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                     <#networked_as as #import_path::NetworkedWrapper<#field_type>>::write_data(&#var, cursor, ctx)?
                 });
                 new = quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(AsRef::<[u8]>::as_ref(cursor), ctx)?
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_new(cursor, ctx)?
                 };
             } else {
                 write_component.push(quote! {
@@ -308,7 +316,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 });
                 new = quote! {
                     <#field_type as #import_path::NetworkedComponent>
-                        ::read_new(AsRef::<[u8]>::as_ref(cursor), ctx)?
+                        ::read_new(cursor, ctx)?
                 };
             }
 
@@ -319,11 +327,11 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
             } else if let Some(ref networked_as) = field_info.networked_as {
                 let networked_as = networked_as.clone();
                 update_component.push(quote! {
-                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, AsRef::<[u8]>::as_ref(cursor), ctx)?
+                    <#networked_as as #import_path::NetworkedWrapper<#field_type>>::read_in_place(#var, cursor, ctx)?
                 });
             } else {
                 update_component.push(quote! {
-                    <#field_type as #import_path::NetworkedComponent>::read_in_place(#var, AsRef::<[u8]>::as_ref(cursor), ctx)?
+                    <#field_type as #import_path::NetworkedComponent>::read_in_place(#var, cursor, ctx)?
                 });
             }
             new_component.push(new);
@@ -359,6 +367,8 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 ctx: &mut #import_path::DeserializeCtx,
                 mut cursor: &mut #import_path::Bytes,
             ) -> #import_path::BevyResult<#component_type> {
+                use #import_path::Buf;
+                let cursor = cursor.reader();
                 Ok(#new_component)
             }
 
@@ -368,13 +378,15 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 #component_var: &mut #component_type,
                 mut cursor: &mut #import_path::Bytes,
             ) -> #import_path::BevyResult<()> {
+                use #import_path::Buf;
+                let cursor = cursor.reader();
                 #update_component;
                 Ok(())
             }
         )*}
 
         #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-        impl #impl_generics #import_path::GroupReplication for #struct_name #ty_generics #where_clause {
+        impl #impl_generics #import_path::ReplicationBundle for #struct_name #ty_generics #where_clause {
             fn register(
                 world: &mut #import_path::World,
                 replication_fns: &mut #import_path::ReplicationRegistry
@@ -387,7 +399,11 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                     );
                 )*
 
-                let mut rule = #import_path::ReplicationRule::new(vec![#(#component_info, )*]);
+                let mut rule = #import_path::ReplicationRule::new(vec![#(#import_path::ComponentRule {
+                    id: #component_info.0,
+                    fns_id: #component_info.1,
+                    send_rate: #component_rate,
+                }, )*]);
                 #set_priority;
                 rule
             }

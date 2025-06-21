@@ -4,10 +4,8 @@ use std::io::{Read, Write};
 
 use bevy::{prelude::*, reflect::TypePath};
 use bevy_replicon::shared::{
-    replication::{
-        replication_registry::{ReplicationRegistry, test_fns::TestFnsEntityExt},
-        replication_rules::GroupReplication,
-    },
+    replication::replication_registry::{ReplicationRegistry, test_fns::TestFnsEntityExt},
+    replication::replication_rules::ReplicationBundle,
     replicon_tick::RepliconTick,
 };
 use serde::{Deserialize, Serialize};
@@ -67,7 +65,7 @@ fn test_attributes() {
     // Test the functions for Transform (as Position)
 
     // Test if the Transform write function behaves correctly
-    entity.apply_write(vec![1, 2, 3], components[0].1, tick);
+    entity.apply_write(vec![1, 2, 3], components[0].fns_id, tick);
     assert_eq!(
         entity.get::<Transform>(),
         Some(&Transform::from_xyz(1., 2., 3.))
@@ -78,20 +76,20 @@ fn test_attributes() {
     transform.translation += Vec3::ONE;
     transform.rotation = Quat::from_rotation_z(1.5);
     assert_eq!(
-        entity.serialize(components[0].1, RepliconTick::new(0)),
+        entity.serialize(components[0].fns_id, RepliconTick::new(0)),
         vec![2, 3, 4]
     );
 
     // Test the function for NotSent
 
     // Test if the NotSent write function spawns from no data
-    entity.apply_write(vec![], components[1].1, tick);
+    entity.apply_write(vec![], components[1].fns_id, tick);
     assert_eq!(entity.get::<NotSent>(), Some(&NotSent::default()));
 
     // Test NotSent's serialize output
     *entity.get_mut::<NotSent>().unwrap() = NotSent(12);
     assert_eq!(
-        entity.serialize(components[1].1, RepliconTick::new(0)),
+        entity.serialize(components[1].fns_id, RepliconTick::new(0)),
         vec![]
     );
 }
