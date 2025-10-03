@@ -24,7 +24,7 @@ use bevy_replicon::prelude::*;
 pub struct PlayerPositionBundle {
     // The content of this field doesn't get sent, and it will be received as the default value,
     // it therefor requires neither Serialize/Deserialize nor NetworkedComponent
-    #[bundlication(no_send, rate=Once)]
+    #[bundlication(no_send, mode=Once)]
     pub player: Player,
     // This component is sent and spawned as is
     pub speed: Speed,

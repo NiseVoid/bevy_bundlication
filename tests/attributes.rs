@@ -2,10 +2,10 @@ use bevy_bundlication::prelude::*;
 
 use std::io::{Read, Write};
 
-use bevy::{prelude::*, reflect::TypePath};
+use bevy::{prelude::*, reflect::TypePath, state::app::StatesPlugin};
 use bevy_replicon::shared::{
-    replication::replication_registry::{ReplicationRegistry, test_fns::TestFnsEntityExt},
-    replication::replication_rules::ReplicationBundle,
+    replication::registry::{ReplicationRegistry, test_fns::TestFnsEntityExt},
+    replication::rules::component::BundleRules,
     replicon_tick::RepliconTick,
 };
 use serde::{Deserialize, Serialize};
@@ -50,14 +50,13 @@ struct BundleWithAttributes {
 #[test]
 fn test_attributes() {
     let mut app = App::new();
-    app.add_plugins(bevy_replicon::RepliconPlugins);
+    app.add_plugins((StatesPlugin, bevy_replicon::RepliconPlugins));
 
     let mut replication_fns = ReplicationRegistry::default();
-    let rule = BundleWithAttributes::register(app.world_mut(), &mut replication_fns);
+    let rule = BundleWithAttributes::component_rules(app.world_mut(), &mut replication_fns);
     app.insert_resource(replication_fns);
 
-    assert_eq!(17, rule.priority);
-    let components = rule.components;
+    assert_eq!(17, BundleWithAttributes::DEFAULT_PRIORITY);
 
     let tick = RepliconTick::default();
     let mut entity = app.world_mut().spawn_empty();
@@ -65,7 +64,7 @@ fn test_attributes() {
     // Test the functions for Transform (as Position)
 
     // Test if the Transform write function behaves correctly
-    entity.apply_write(vec![1, 2, 3], components[0].fns_id, tick);
+    entity.apply_write(vec![1, 2, 3], rule[0].fns_id, tick);
     assert_eq!(
         entity.get::<Transform>(),
         Some(&Transform::from_xyz(1., 2., 3.))
@@ -76,20 +75,20 @@ fn test_attributes() {
     transform.translation += Vec3::ONE;
     transform.rotation = Quat::from_rotation_z(1.5);
     assert_eq!(
-        entity.serialize(components[0].fns_id, RepliconTick::new(0)),
+        entity.serialize(rule[0].fns_id, RepliconTick::new(0)),
         vec![2, 3, 4]
     );
 
     // Test the function for NotSent
 
     // Test if the NotSent write function spawns from no data
-    entity.apply_write(vec![], components[1].fns_id, tick);
+    entity.apply_write(vec![], rule[1].fns_id, tick);
     assert_eq!(entity.get::<NotSent>(), Some(&NotSent::default()));
 
     // Test NotSent's serialize output
     *entity.get_mut::<NotSent>().unwrap() = NotSent(12);
     assert_eq!(
-        entity.serialize(components[1].fns_id, RepliconTick::new(0)),
+        entity.serialize(rule[1].fns_id, RepliconTick::new(0)),
         vec![]
     );
 }

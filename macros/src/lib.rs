@@ -1,5 +1,6 @@
 use bevy_macro_utils::get_struct_fields;
 use proc_macro::TokenStream;
+use proc_macro2::Literal;
 use quote::quote;
 use syn::{DeriveInput, parse_macro_input};
 
@@ -61,7 +62,7 @@ struct BundleField {
     send: bool,
     networked_as: Option<syn::Ident>,
     update_with: Option<syn::Ident>,
-    rate: syn::Ident,
+    mode: syn::Ident,
 }
 
 impl Default for BundleField {
@@ -71,7 +72,7 @@ impl Default for BundleField {
             send: true,
             networked_as: None,
             update_with: None,
-            rate: syn::Ident::new(&String::from("EveryTick"), proc_macro2::Span::call_site()),
+            mode: syn::Ident::new(&String::from("OnChange"), proc_macro2::Span::call_site()),
         }
     }
 }
@@ -152,8 +153,8 @@ impl syn::parse::Parser for BundleField {
                         self.networked_as = Some(parse_ident(&mut token_iter, ident)?);
                     } else if ident == BUNDLICATION_ATTRIBUTE_UPDATE_NAME {
                         self.update_with = Some(parse_ident(&mut token_iter, ident)?);
-                    } else if ident == BUNDLICATION_ATTRIBUTE_RATE_NAME {
-                        self.rate = parse_ident(&mut token_iter, ident)?;
+                    } else if ident == BUNDLICATION_ATTRIBUTE_MODE_NAME {
+                        self.mode = parse_ident(&mut token_iter, ident)?;
                     } else {
                         return Err(syn::Error::new(ident.span(), "unknown ident"));
                     }
@@ -189,7 +190,7 @@ const BUNDLICATION_ATTRIBUTE_SKIP_NAME: &str = "skip";
 const BUNDLICATION_ATTRIBUTE_NO_SEND_NAME: &str = "no_send";
 const BUNDLICATION_ATTRIBUTE_AS_NAME: &str = "as";
 const BUNDLICATION_ATTRIBUTE_UPDATE_NAME: &str = "update";
-const BUNDLICATION_ATTRIBUTE_RATE_NAME: &str = "rate";
+const BUNDLICATION_ATTRIBUTE_MODE_NAME: &str = "mode";
 
 // TODO: Add option for alternative default function for non-sent fields
 
@@ -251,7 +252,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
     let mut component_deserialize_new = Vec::new();
     let mut component_deserialize_in_place = Vec::new();
     let mut component_info = Vec::new();
-    let mut component_rate = Vec::new();
+    let mut component_mode = Vec::new();
     let mut write_component = Vec::new();
     let mut new_component = Vec::new();
     let mut update_component = Vec::new();
@@ -274,8 +275,8 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         component_info.push(quote! {
             #info
         });
-        let rate = field_info.rate.clone();
-        component_rate.push(quote! {#import_path::SendRate::#rate});
+        let mode = field_info.mode.clone();
+        component_mode.push(quote! {#import_path::ReplicationMode::#mode});
 
         let serialize = syn::Ident::new(
             &(String::from("__serialize_") + &field.to_string()),
@@ -342,11 +343,9 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         }
     }
 
-    let set_priority = match attributes.priority {
-        Some(priority) => quote! {rule.priority = #priority},
-        None => quote! {},
-    };
-
+    let priority = attributes
+        .priority
+        .unwrap_or(Literal::usize_unsuffixed(field.len()));
     let generics = ast.generics;
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let struct_name = &ast.ident;
@@ -386,11 +385,13 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         )*}
 
         #[allow(clippy::too_many_arguments, clippy::type_complexity)]
-        impl #impl_generics #import_path::ReplicationBundle for #struct_name #ty_generics #where_clause {
-            fn register(
+        impl #impl_generics #import_path::BundleRules for #struct_name #ty_generics #where_clause {
+            const DEFAULT_PRIORITY: usize = #priority;
+
+            fn component_rules(
                 world: &mut #import_path::World,
                 replication_fns: &mut #import_path::ReplicationRegistry
-            ) -> #import_path::ReplicationRule {
+            ) -> Vec<#import_path::ComponentRule> {
                 #(
                     let #component_info = replication_fns.register_rule_fns(
                         world,
@@ -399,13 +400,13 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                     );
                 )*
 
-                let mut rule = #import_path::ReplicationRule::new(vec![#(#import_path::ComponentRule {
-                    id: #component_info.0,
-                    fns_id: #component_info.1,
-                    send_rate: #component_rate,
-                }, )*]);
-                #set_priority;
-                rule
+                vec![
+                    #(#import_path::ComponentRule {
+                        id: #component_info.0,
+                        fns_id: #component_info.1,
+                        mode: #component_mode,
+                    }, )*
+                ]
             }
         }
     })

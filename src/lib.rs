@@ -8,7 +8,7 @@ pub mod prelude {
 
     pub use crate::{NetworkedComponent, NetworkedWrapper, deserialize, serialize};
     pub use bevy_bundlication_macros::NetworkedBundle;
-    pub use bevy_replicon::shared::replication::replication_registry::ctx::{
+    pub use bevy_replicon::shared::replication::registry::ctx::{
         SerializeCtx, WriteCtx as DeserializeCtx,
     };
 }
@@ -20,12 +20,15 @@ pub mod macro_export {
     pub use bevy::ecs::world::World;
     pub use bevy_replicon::bytes::{Buf, Bytes};
     pub use bevy_replicon::shared::replication::{
-        replication_registry::{
+        registry::{
             ReplicationRegistry,
             ctx::{SerializeCtx, WriteCtx as DeserializeCtx},
             rule_fns::{DeserializeFn, RuleFns},
         },
-        replication_rules::{ComponentRule, ReplicationBundle, ReplicationRule, SendRate},
+        rules::{
+            ReplicationRule,
+            component::{BundleRules, ComponentRule, ReplicationMode},
+        },
     };
     pub use postcard;
 }
