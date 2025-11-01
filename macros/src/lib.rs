@@ -213,7 +213,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         }
     }
 
-    let named_fields = match get_struct_fields(&ast.data) {
+    let named_fields = match get_struct_fields(&ast.data, "NetworkedBundle") {
         Ok(fields) => fields,
         Err(e) => return e.into_compile_error().into(),
     };
