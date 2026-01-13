@@ -12,7 +12,7 @@ edition = "2024"
 proc-macro = true
 
 [dependencies]
-bevy_macro_utils = "0.17"
+bevy_macro_utils = "0.18"
 
 syn = "2.0"
 quote = "1.0"
