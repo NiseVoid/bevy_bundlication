@@ -1,5 +1,8 @@
 # bevy_bundlication
 
+> [!CAUTION]
+> This crate has been deprecated by the phasing out of bundle structs in bevy, and bevy_replicon offering all features directly trough a combination of `replicate_as`, `replicate_with`, `replicate_bundle`, and `replicate_filtered`
+
 Network replication for bevy based on a bundle pattern.
 Replication group rules for [bevy_replicon](https://github.com/projectharmonia/bevy_replicon) using a bundle-like API.
 
